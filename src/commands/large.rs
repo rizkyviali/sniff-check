@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
+use crate::utils::FileUtils;
+use crate::config::Config;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LargeFileReport {
@@ -72,36 +73,28 @@ pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
 
 fn scan_large_files(threshold: usize) -> Result<LargeFileReport> {
     let current_dir = std::env::current_dir()?;
+    let config = Config::load().unwrap_or_default();
     let extensions = vec!["ts", "tsx", "js", "jsx"];
     
-    let files: Vec<PathBuf> = WalkDir::new(&current_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| {
-            if let Some(ext) = e.path().extension() {
-                extensions.contains(&ext.to_string_lossy().as_ref())
-            } else {
-                false
-            }
-        })
-        .filter(|e| !is_excluded_path(e.path()))
-        .map(|e| e.path().to_path_buf())
-        .collect();
-    
+    let files = FileUtils::find_files_with_extensions(&current_dir, &extensions);
     let total_files = files.len();
     
-    let large_files: Vec<LargeFile> = files
-        .par_iter()
-        .filter_map(|path| {
-            let line_count = count_lines(path).ok()?;
+    let large_files: Vec<LargeFile> = FileUtils::process_files_parallel(
+        &files,
+        |path| {
+            let line_count = FileUtils::count_lines_optimized(path)?;
             if line_count >= threshold {
-                Some(create_large_file_info(path, line_count))
+                Ok(Some(create_large_file_info(path, line_count, &config)))
             } else {
-                None
+                Ok(None)
             }
-        })
-        .collect();
+        },
+        "Analyzing file sizes",
+        false
+    )?
+    .into_iter()
+    .filter_map(|opt| opt)
+    .collect();
     
     let summary = create_summary(total_files, &large_files);
     
@@ -111,33 +104,13 @@ fn scan_large_files(threshold: usize) -> Result<LargeFileReport> {
     })
 }
 
-fn is_excluded_path(path: &Path) -> bool {
-    let excluded_dirs = vec![
-        "node_modules", ".next", "dist", "build", ".git", 
-        "coverage", "target", ".vscode", ".idea"
-    ];
-    
-    path.ancestors().any(|ancestor| {
-        if let Some(name) = ancestor.file_name() {
-            excluded_dirs.contains(&name.to_string_lossy().as_ref())
-        } else {
-            false
-        }
-    })
-}
-
-fn count_lines(path: &Path) -> Result<usize> {
-    let content = fs::read_to_string(path)?;
-    Ok(content.lines().count())
-}
-
-fn create_large_file_info(path: &Path, lines: usize) -> LargeFile {
+fn create_large_file_info(path: &Path, lines: usize, config: &Config) -> LargeFile {
     let file_type = determine_file_type(path);
-    let severity = determine_severity(lines);
+    let severity = determine_severity_with_config(lines, config);
     let suggestions = generate_suggestions(&file_type, lines);
     
     LargeFile {
-        path: path.to_string_lossy().to_string(),
+        path: FileUtils::get_relative_path(path),
         lines,
         file_type,
         severity,
@@ -167,11 +140,17 @@ fn determine_file_type(path: &Path) -> FileType {
     }
 }
 
-fn determine_severity(lines: usize) -> Severity {
-    match lines {
-        100..=199 => Severity::Warning,
-        200..=399 => Severity::Error,
-        _ => Severity::Critical,
+fn determine_severity_with_config(lines: usize, config: &Config) -> Severity {
+    let levels = &config.large_files.severity_levels;
+    
+    if lines >= levels.critical {
+        Severity::Critical
+    } else if lines >= levels.error {
+        Severity::Error
+    } else if lines >= levels.warning {
+        Severity::Warning
+    } else {
+        Severity::Warning // Fallback, shouldn't happen if threshold is set correctly
     }
 }
 

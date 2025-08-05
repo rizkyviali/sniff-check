@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
+use std::sync::OnceLock;
+use crate::utils::FileUtils;
+use crate::config::Config;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TypeScriptReport {
@@ -66,31 +68,44 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
     Ok(())
 }
 
+// Global regex patterns compiled once
+static REGEX_PATTERNS: OnceLock<RegexPatterns> = OnceLock::new();
+
+struct RegexPatterns {
+    any_regex: Regex,
+    function_regex: Regex,
+    ts_ignore_regex: Regex,
+    ts_expect_error_regex: Regex,
+}
+
+impl RegexPatterns {
+    fn new() -> Result<Self> {
+        Ok(Self {
+            any_regex: Regex::new(r"\b:\s*any\b")?,
+            function_regex: Regex::new(r"(?:function\s+\w+|const\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>|(?:async\s+)?function\s*\([^)]*\))\s*\{")?,
+            ts_ignore_regex: Regex::new(r"@ts-ignore")?,
+            ts_expect_error_regex: Regex::new(r"@ts-expect-error")?,
+        })
+    }
+}
+
+fn get_regex_patterns() -> &'static RegexPatterns {
+    REGEX_PATTERNS.get_or_init(|| RegexPatterns::new().expect("Failed to compile regex patterns"))
+}
+
 fn analyze_typescript_files() -> Result<TypeScriptReport> {
     let current_dir = std::env::current_dir()?;
     let extensions = vec!["ts", "tsx"];
     
-    let files: Vec<PathBuf> = WalkDir::new(&current_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| {
-            if let Some(ext) = e.path().extension() {
-                extensions.contains(&ext.to_string_lossy().as_ref())
-            } else {
-                false
-            }
-        })
-        .filter(|e| !is_excluded_path(e.path()))
-        .map(|e| e.path().to_path_buf())
-        .collect();
-    
+    let files = FileUtils::find_files_with_extensions(&current_dir, &extensions);
     let files_count = files.len();
     
-    let all_issues: Vec<Vec<TypeIssue>> = files
-        .par_iter()
-        .map(|path| analyze_file(path))
-        .collect::<Result<Vec<_>, _>>()?;
+    let all_issues: Vec<Vec<TypeIssue>> = FileUtils::process_files_parallel(
+        &files,
+        |path| analyze_file_optimized(path),
+        "Analyzing TypeScript files",
+        false
+    )?;
     
     let issues: Vec<TypeIssue> = all_issues.into_iter().flatten().collect();
     let summary = create_summary(files_count, &issues);
@@ -113,24 +128,19 @@ fn is_excluded_path(path: &Path) -> bool {
     })
 }
 
-fn analyze_file(path: &Path) -> Result<Vec<TypeIssue>> {
+fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
     let content = fs::read_to_string(path)?;
     let mut issues = Vec::new();
-    
-    // Compile regex patterns once
-    let any_regex = Regex::new(r"\b:\s*any\b")?;
-    let function_regex = Regex::new(r"(?:function\s+\w+|const\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>|(?:async\s+)?function\s*\([^)]*\))\s*\{")?;
-    let param_regex = Regex::new(r"\(\s*([^:)]+)\s*\)")?;
-    let ts_ignore_regex = Regex::new(r"@ts-ignore")?;
-    let ts_expect_error_regex = Regex::new(r"@ts-expect-error")?;
+    let patterns = get_regex_patterns();
+    let file_path = FileUtils::get_relative_path(path);
     
     for (line_num, line) in content.lines().enumerate() {
         let line_num = line_num + 1;
         
         // Check for 'any' usage
-        for mat in any_regex.find_iter(line) {
+        for mat in patterns.any_regex.find_iter(line) {
             issues.push(TypeIssue {
-                file: path.to_string_lossy().to_string(),
+                file: file_path.clone(),
                 line: line_num,
                 column: mat.start(),
                 issue_type: IssueType::AnyUsage,
@@ -140,9 +150,9 @@ fn analyze_file(path: &Path) -> Result<Vec<TypeIssue>> {
         }
         
         // Check for @ts-ignore
-        if ts_ignore_regex.is_match(line) {
+        if patterns.ts_ignore_regex.is_match(line) {
             issues.push(TypeIssue {
-                file: path.to_string_lossy().to_string(),
+                file: file_path.clone(),
                 line: line_num,
                 column: 0,
                 issue_type: IssueType::TSIgnore,
@@ -152,9 +162,9 @@ fn analyze_file(path: &Path) -> Result<Vec<TypeIssue>> {
         }
         
         // Check for @ts-expect-error
-        if ts_expect_error_regex.is_match(line) {
+        if patterns.ts_expect_error_regex.is_match(line) {
             issues.push(TypeIssue {
-                file: path.to_string_lossy().to_string(),
+                file: file_path.clone(),
                 line: line_num,
                 column: 0,
                 issue_type: IssueType::TSExpectError,
@@ -164,10 +174,10 @@ fn analyze_file(path: &Path) -> Result<Vec<TypeIssue>> {
         }
         
         // Check for functions without return types (simplified check)
-        if function_regex.is_match(line) && !line.contains("):") && !line.trim_end().ends_with("=> {") {
+        if patterns.function_regex.is_match(line) && !line.contains("):") && !line.trim_end().ends_with("=> {") {
             if !line.contains("constructor") && !line.contains("() {") {
                 issues.push(TypeIssue {
-                    file: path.to_string_lossy().to_string(),
+                    file: file_path.clone(),
                     line: line_num,
                     column: 0,
                     issue_type: IssueType::MissingReturnType,

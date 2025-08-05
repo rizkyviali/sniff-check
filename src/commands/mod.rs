@@ -6,6 +6,7 @@ pub mod bundle;
 pub mod perf;
 pub mod memory;
 pub mod env;
+pub mod context;
 pub mod deploy;
 
 pub use menu::*;
@@ -16,4 +17,5 @@ pub use bundle::*;
 pub use perf::*;
 pub use memory::*;
 pub use env::*;
+pub use context::*;
 pub use deploy::*;

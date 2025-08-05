@@ -1,6 +1,6 @@
 {
   "name": "sniff-check",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Opinionated TypeScript/Next.js Development Toolkit",
   "main": "index.js",
   "bin": {

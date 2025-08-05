@@ -22,9 +22,10 @@ fn print_menu() {
     print_command("sniff types", "TypeScript Coverage", "Check TypeScript type coverage and quality");
     println!();
     
-    // Performance section
-    println!("{}", "📊 Performance".bold().green());
-    println!("{}", "──────────────".green());
+    // Analysis section
+    println!("{}", "📊 Analysis".bold().green());
+    println!("{}", "───────────".green());
+    print_command("sniff context", "Project Context", "Analyze project structure and provide insights");
     print_command("sniff bundle", "Bundle Analysis", "Analyze bundle size and optimization opportunities");
     print_command("sniff perf", "Performance Audit", "Run Lighthouse performance audits");
     print_command("sniff memory", "Memory Check", "Detect memory leaks during development");
@@ -55,6 +56,9 @@ fn print_menu() {
     // Quick workflow
     println!("{}", "📚 Quick Workflow:".bold().magenta());
     println!("{}", "==================".magenta());
+    println!("  {}", "# Project analysis".dimmed());
+    println!("  {}", "sniff context".bright_white());
+    println!();
     println!("  {}", "# Daily development".dimmed());
     println!("  {}", "sniff large && sniff imports".bright_white());
     println!();

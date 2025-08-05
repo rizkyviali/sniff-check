@@ -48,6 +48,8 @@ enum Commands {
     Memory,
     #[command(about = "Validate environment variables")]
     Env,
+    #[command(about = "Analyze project structure and provide context")]
+    Context,
     #[command(about = "Run complete deployment validation")]
     Deploy,
     #[command(about = "Configuration management")]
@@ -85,6 +87,7 @@ async fn main() {
         Some(Commands::Perf) => perf::run(cli.json, cli.quiet).await,
         Some(Commands::Memory) => memory::run(cli.json, cli.quiet).await,
         Some(Commands::Env) => env::run(cli.json, cli.quiet).await,
+        Some(Commands::Context) => context::run(cli.json, cli.quiet).await,
         Some(Commands::Deploy) => deploy::run(cli.json, cli.quiet).await,
         Some(Commands::Config { action }) => handle_config_command(action).await,
     };

@@ -134,6 +134,18 @@ Complete environment variable validation:
 - Scans .env files for security issues and sensitive data exposure
 - Provides environment health score and configuration recommendations
 
+#### 🏗️ Project Context Analysis
+```bash
+sniff context
+```
+
+Comprehensive project structure and context analysis:
+- Analyzes project information (name, version, framework, languages)
+- Maps directory structure and identifies file purposes
+- Detects architectural patterns and organization quality
+- Provides insights into project complexity and recommendations
+- Supports multiple frameworks: Next.js, React, Vue, Angular, Svelte
+
 #### 🚀 Pre-deployment Pipeline
 ```bash
 sniff deploy
@@ -177,6 +189,7 @@ sniff --config custom.toml large
 - **Performance Auditing** - Lighthouse integration for performance testing
 - **Memory Leak Detection** - Monitor Node.js memory usage patterns
 - **Environment Validation** - Check required environment variables
+- **Project Context Analysis** - Comprehensive project structure and insights
 - **Pre-deployment Pipeline** - Complete validation before deployment
 - **Configuration System** - Project-specific settings and overrides
 
@@ -324,6 +337,45 @@ Use `sniff config init` to generate a default configuration file, or `sniff conf
    All 'any' types must be replaced with specific types.
 ```
 
+### Project Context Report
+```
+🔍 Analyzing project structure and context...
+
+📊 Project Context Report
+========================
+
+🏗️  PROJECT OVERVIEW
+─────────────────────
+  Name: my-nextjs-app
+  Version: 1.2.0
+  Description: Modern e-commerce platform
+  Framework: NextJs
+  Languages: [TypeScript, JavaScript, CSS, JSON]
+  Total Files: 247
+  Total Lines: 12,485
+
+📁 PROJECT STRUCTURE
+──────────────────────
+  Key Directories:
+    • src/components (45 files, 3,241 lines)
+      Purpose: Components | File types: tsx, ts, css
+    • src/pages (23 files, 2,156 lines)
+      Purpose: Pages | File types: tsx, ts
+    • src/api (18 files, 1,489 lines)  
+      Purpose: Api | File types: ts
+    • src/utils (12 files, 892 lines)
+      Purpose: Utils | File types: ts
+
+🏛️  ARCHITECTURE INSIGHTS
+─────────────────────────
+  Organization Score: 85.2%
+  Complexity Level: Moderate
+  Detected Patterns:
+    • LayeredArchitecture
+    • ComponentComposition
+    • CustomHooks
+```
+
 ## 🎯 Recommended Workflows
 
 ### Daily Development
@@ -356,6 +408,7 @@ sniff bundle         # Bundle analysis
 sniff perf           # Performance audit
 sniff memory         # Memory leak detection
 sniff env            # Environment validation
+sniff context        # Project structure analysis
 ```
 
 ## 🚦 Exit Codes
@@ -364,6 +417,197 @@ sniff env            # Environment validation
 - **1**: Issues found that need attention
 - **2**: Configuration error
 - **3**: Build/project setup error
+
+## 🔄 CI/CD Integration
+
+### GitHub Actions
+
+Add this workflow to `.github/workflows/sniff-check.yml`:
+
+```yaml
+name: Code Quality Check
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install sniff-check
+      run: npx sniff-check@latest --version || npm install -g sniff-check
+    
+    - name: Run code quality checks
+      run: |
+        echo "🔍 Running sniff-check quality analysis..."
+        sniff large --json > large-files.json
+        sniff types --json > type-issues.json
+        sniff imports --json > unused-imports.json
+        
+        # Show results in human-readable format
+        echo "📊 Large Files Report:"
+        sniff large
+        
+        echo "📝 TypeScript Quality:"
+        sniff types
+        
+        echo "🚫 Unused Imports:"
+        sniff imports
+        
+        echo "🏗️ Project Context:"
+        sniff context
+    
+    - name: Upload reports as artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: sniff-check-reports
+        path: |
+          large-files.json
+          type-issues.json
+          unused-imports.json
+        retention-days: 30
+    
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            const largeFiles = JSON.parse(fs.readFileSync('large-files.json', 'utf8'));
+            const typeIssues = JSON.parse(fs.readFileSync('type-issues.json', 'utf8'));
+            
+            let comment = '## 🔍 Code Quality Report\n\n';
+            comment += `**Large Files:** ${largeFiles.summary.large_files_found} found\n`;
+            comment += `**Type Issues:** ${typeIssues.summary.total_issues} found\n`;
+            comment += `**Type Coverage:** ${typeIssues.summary.type_coverage_score.toFixed(1)}%\n\n`;
+            
+            if (largeFiles.summary.critical > 0) {
+              comment += '🚨 **Critical:** Files over 400 lines found - immediate refactoring needed!\n';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            console.log('Could not create PR comment:', error);
+          }
+
+  performance-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build project
+      run: npm run build
+    
+    - name: Install sniff-check
+      run: npm install -g sniff-check
+    
+    - name: Run performance analysis
+      run: |
+        sniff bundle --json > bundle-analysis.json
+        sniff perf --json > performance-audit.json || echo "Performance audit skipped (no dev server)"
+        sniff memory --json > memory-check.json
+        
+        # Show bundle analysis
+        echo "📦 Bundle Analysis:"
+        sniff bundle
+    
+    - name: Upload performance reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-reports
+        path: |
+          bundle-analysis.json
+          performance-audit.json
+          memory-check.json
+```
+
+### Pre-deployment Pipeline
+
+For production deployments:
+
+```yaml
+name: Pre-deployment Check
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install sniff-check
+      run: npm install -g sniff-check
+    
+    - name: Run complete deployment validation
+      run: |
+        echo "🚀 Running complete pre-deployment validation..."
+        sniff deploy
+        
+        # Additional context analysis
+        echo "📊 Final project analysis:"
+        sniff context --json > final-context.json
+    
+    - name: Block deployment on critical issues
+      run: |
+        # This will fail the workflow if critical issues are found
+        if sniff types --quiet | grep -q "CRITICAL"; then
+          echo "❌ Critical type issues found - blocking deployment"
+          exit 1
+        fi
+        
+        if sniff large --quiet | grep -q "CRITICAL"; then
+          echo "❌ Critical large files found - blocking deployment"
+          exit 1
+        fi
+        
+        echo "✅ All checks passed - ready for deployment"
+```
 
 ## 🤝 Contributing
 
