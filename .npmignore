@@ -1,0 +1,76 @@
+# Rust development files (not needed for npm users)
+/target/
+/src/
+Cargo.toml
+Cargo.lock
+sniff.toml
+
+# Git and development files
+.git/
+.gitignore
+.gitattributes
+
+# Documentation and guides (keep README.md)
+PUBLISHING.md
+docs/
+examples/
+*.md
+!README.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node development files
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+
+# Environment files
+.env*
+
+# Logs
+*.log
+logs/
+
+# Testing
+coverage/
+.nyc_output/
+test/
+tests/
+spec/
+
+# CI/CD
+.github/
+.travis.yml
+.circleci/
+appveyor.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Only explicitly include what's needed for npm package
+!package.json
+!install.js
+!README.md
+!LICENSE

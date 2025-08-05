@@ -1,0 +1,51 @@
+{
+  "name": "sniff-check",
+  "version": "0.1.0",
+  "description": "Opinionated TypeScript/Next.js Development Toolkit",
+  "main": "index.js",
+  "bin": {
+    "sniff": "./bin/sniff"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "typescript",
+    "nextjs",
+    "code-quality",
+    "cli",
+    "development",
+    "linting",
+    "performance",
+    "memory-leak",
+    "bundle-analysis"
+  ],
+  "author": "Rizky Viali",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rizkyviali/sniff-check"
+  },
+  "bugs": {
+    "url": "https://github.com/rizkyviali/sniff-check/issues"
+  },
+  "homepage": "https://github.com/rizkyviali/sniff-check#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "bin/",
+    "install.js",
+    "README.md"
+  ]
+}
