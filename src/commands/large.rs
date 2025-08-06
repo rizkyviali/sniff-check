@@ -18,6 +18,8 @@ pub struct LargeFileReport {
 pub struct LargeFile {
     pub path: String,
     pub lines: usize,
+    pub size_bytes: u64,
+    pub size_kb: f64,
     pub file_type: FileType,
     pub severity: Severity,
     pub suggestions: Vec<String>,
@@ -25,14 +27,42 @@ pub struct LargeFile {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FileType {
+    ApiRoute,
+    ServerComponent,
+    ClientComponent,
+    CustomHook,
+    TypeDefinition,
+    Middleware,
+    Layout,
+    Page,
     Component,
     Service,
-    Api,
-    Page,
     Util,
     Config,
     Test,
     Other,
+}
+
+impl std::fmt::Display for FileType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let display = match self {
+            FileType::ApiRoute => "API Route",
+            FileType::ServerComponent => "Server Component",
+            FileType::ClientComponent => "Client Component", 
+            FileType::CustomHook => "Custom Hook",
+            FileType::TypeDefinition => "Type Definition",
+            FileType::Middleware => "Middleware",
+            FileType::Layout => "Layout",
+            FileType::Page => "Page",
+            FileType::Component => "Component",
+            FileType::Service => "Service",
+            FileType::Util => "Utility",
+            FileType::Config => "Configuration",
+            FileType::Test => "Test",
+            FileType::Other => "Other",
+        };
+        write!(f, "{}", display)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,7 +114,8 @@ fn scan_large_files(threshold: usize) -> Result<LargeFileReport> {
         |path| {
             let line_count = FileUtils::count_lines_optimized(path)?;
             if line_count >= threshold {
-                Ok(Some(create_large_file_info(path, line_count, &config)))
+                let size_bytes = fs::metadata(path)?.len();
+                Ok(Some(create_large_file_info(path, line_count, size_bytes, &config)))
             } else {
                 Ok(None)
             }
@@ -104,14 +135,18 @@ fn scan_large_files(threshold: usize) -> Result<LargeFileReport> {
     })
 }
 
-fn create_large_file_info(path: &Path, lines: usize, config: &Config) -> LargeFile {
+fn create_large_file_info(path: &Path, lines: usize, size_bytes: u64, config: &Config) -> LargeFile {
     let file_type = determine_file_type(path);
     let severity = determine_severity_with_config(lines, config);
     let suggestions = generate_suggestions(&file_type, lines);
     
+    let size_kb = size_bytes as f64 / 1024.0;
+    
     LargeFile {
         path: FileUtils::get_relative_path(path),
         lines,
+        size_bytes,
+        size_kb,
         file_type,
         severity,
         suggestions,
@@ -119,21 +154,55 @@ fn create_large_file_info(path: &Path, lines: usize, config: &Config) -> LargeFi
 }
 
 fn determine_file_type(path: &Path) -> FileType {
-    let path_str = path.to_string_lossy().to_lowercase();
+    let path_str = path.to_string_lossy();
+    let path_lower = path_str.to_lowercase();
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
     
-    if path_str.contains("/pages/") || path_str.contains("/app/") {
+    // Check file content for client directive (simplified check)
+    let has_use_client = if let Ok(content) = fs::read_to_string(path) {
+        content.lines().take(10).any(|line| line.trim().starts_with("'use client'") || line.trim().starts_with("\"use client\""))
+    } else {
+        false
+    };
+    
+    // Specific Next.js patterns
+    if file_name == "middleware.ts" || file_name == "middleware.js" {
+        FileType::Middleware
+    } else if file_name == "layout.tsx" || file_name == "layout.js" {
+        FileType::Layout
+    } else if file_name == "page.tsx" || file_name == "page.js" {
         FileType::Page
-    } else if path_str.contains("/api/") {
-        FileType::Api
-    } else if path_str.contains("/components/") {
-        FileType::Component
-    } else if path_str.contains("/services/") || path_str.contains("/lib/") {
+    } else if path_lower.contains("/api/") && (path_lower.ends_with("/route.ts") || path_lower.ends_with("/route.js")) {
+        FileType::ApiRoute
+    } else if path_lower.contains("/api/") {
+        FileType::ApiRoute
+    } else if path_str.ends_with(".d.ts") || (path_lower.contains("/types/") && (path_lower.ends_with(".ts") || path_lower.ends_with(".tsx"))) {
+        FileType::TypeDefinition
+    } else if file_name.starts_with("use") && file_name.len() > 3 {
+        let char_after_use = file_name.chars().nth(3).unwrap_or(' ');
+        if char_after_use.is_uppercase() {
+            FileType::CustomHook
+        } else {
+            FileType::Component
+        }
+    } else if has_use_client {
+        FileType::ClientComponent
+    } else if path_lower.contains("/components/") {
+        // Check if it's likely a server component (React 18+ pattern)
+        if path_lower.contains("/app/") && !has_use_client {
+            FileType::ServerComponent
+        } else {
+            FileType::Component
+        }
+    } else if path_lower.contains("/pages/") {
+        FileType::Page
+    } else if path_lower.contains("/services/") || path_lower.contains("/lib/") {
         FileType::Service
-    } else if path_str.contains("/utils/") || path_str.contains("/helpers/") {
+    } else if path_lower.contains("/utils/") || path_lower.contains("/helpers/") {
         FileType::Util
-    } else if path_str.contains("config") {
+    } else if path_lower.contains("config") {
         FileType::Config
-    } else if path_str.contains("test") || path_str.contains("spec") {
+    } else if path_lower.contains("test") || path_lower.contains("spec") {
         FileType::Test
     } else {
         FileType::Other
@@ -158,38 +227,55 @@ fn generate_suggestions(file_type: &FileType, lines: usize) -> Vec<String> {
     let mut suggestions = Vec::new();
     
     match file_type {
-        FileType::Component => {
-            suggestions.push("Break into smaller sub-components".to_string());
-            suggestions.push("Extract custom hooks for logic".to_string());
-            suggestions.push("Move utility functions to separate files".to_string());
+        FileType::ServerComponent | FileType::ClientComponent | FileType::Component => {
+            suggestions.push("🧩 Break into smaller components".to_string());
+            suggestions.push("🎣 Extract custom hooks for logic".to_string());
+            suggestions.push("📦 Move utility functions to separate files".to_string());
         },
         FileType::Service => {
-            suggestions.push("Split into multiple service classes".to_string());
-            suggestions.push("Extract interfaces and types".to_string());
-            suggestions.push("Use dependency injection".to_string());
+            suggestions.push("🔧 Split into multiple service classes".to_string());
+            suggestions.push("📝 Extract interfaces and types".to_string());
+            suggestions.push("💉 Use dependency injection".to_string());
         },
-        FileType::Api => {
-            suggestions.push("Split into multiple route handlers".to_string());
-            suggestions.push("Extract validation logic".to_string());
-            suggestions.push("Move business logic to services".to_string());
+        FileType::ApiRoute => {
+            suggestions.push("🛣️ Split into multiple route handlers".to_string());
+            suggestions.push("✅ Extract validation logic".to_string());
+            suggestions.push("🏢 Move business logic to services".to_string());
         },
         FileType::Page => {
-            suggestions.push("Extract page components".to_string());
-            suggestions.push("Move data fetching to separate hooks".to_string());
-            suggestions.push("Split into layout and content components".to_string());
+            suggestions.push("🏗️ Extract page components".to_string());
+            suggestions.push("🎣 Move data fetching to separate hooks".to_string());
+            suggestions.push("📱 Split into layout and content components".to_string());
+        },
+        FileType::Layout => {
+            suggestions.push("🎨 Extract layout components".to_string());
+            suggestions.push("🔧 Move layout logic to custom hooks".to_string());
+            suggestions.push("📐 Split complex layouts into sections".to_string());
+        },
+        FileType::CustomHook => {
+            suggestions.push("⚡ Split hook into smaller focused hooks".to_string());
+            suggestions.push("🔄 Extract shared logic to utilities".to_string());
+            suggestions.push("🎯 Consider hook composition patterns".to_string());
+        },
+        FileType::TypeDefinition => {
+            suggestions.push("📋 Split types by domain or feature".to_string());
+            suggestions.push("🏗️ Group related interfaces together".to_string());
+            suggestions.push("📦 Consider type-only import/export".to_string());
+        },
+        FileType::Middleware => {
+            suggestions.push("🔀 Split middleware by functionality".to_string());
+            suggestions.push("🛡️ Extract validation to separate functions".to_string());
+            suggestions.push("📊 Move logging logic to utilities".to_string());
         },
         FileType::Util => {
-            suggestions.push("Split utility functions by domain".to_string());
-            suggestions.push("Create separate files for each utility group".to_string());
+            suggestions.push("🔧 Split utility functions by domain".to_string());
+            suggestions.push("📁 Create separate files for each utility group".to_string());
+            suggestions.push("🎯 Group related functions together".to_string());
         },
         _ => {
-            suggestions.push("Consider breaking into smaller modules".to_string());
-            suggestions.push("Extract reusable logic".to_string());
+            suggestions.push("📦 Consider breaking into smaller modules".to_string());
+            suggestions.push("♻️ Extract reusable logic".to_string());
         }
-    }
-    
-    if lines > 300 {
-        suggestions.push("⚠️ CRITICAL: This file is extremely large and should be refactored immediately".to_string());
     }
     
     suggestions
@@ -244,47 +330,56 @@ fn print_report(report: &LargeFileReport, quiet: bool) {
     
     // Print critical files first
     if let Some(critical_files) = files_by_severity.get("Critical (400+ lines)") {
-        println!("{}", "🚨 CRITICAL FILES".bold().red());
         for file in critical_files {
-            print_file_info(file, "red");
+            print_file_info_compact(file, "critical");
         }
-        println!();
     }
     
     // Print error files
     if let Some(error_files) = files_by_severity.get("Error (200-399 lines)") {
-        println!("{}", "⚠️  ERROR FILES".bold().yellow());
         for file in error_files {
-            print_file_info(file, "yellow");
+            print_file_info_compact(file, "error");
         }
-        println!();
     }
     
     // Print warning files
     if let Some(warning_files) = files_by_severity.get("Warning (100-199 lines)") {
-        println!("{}", "⚡ WARNING FILES".bold().cyan());
         for file in warning_files {
-            print_file_info(file, "cyan");
+            print_file_info_compact(file, "warning");
         }
-        println!();
     }
     
     // Print summary
     print_summary(&report.summary);
 }
 
-fn print_file_info(file: &LargeFile, color: &str) {
-    let path_colored = match color {
+fn print_file_info_compact(file: &LargeFile, severity: &str) {
+    let (emoji, path_color) = match severity {
+        "critical" => ("🚨 CRITICAL:", "red"),
+        "error" => ("⚠️  ERROR:", "yellow"),
+        "warning" => ("⚡ WARNING:", "cyan"),
+        _ => ("📄", "white"),
+    };
+    
+    let path_colored = match path_color {
         "red" => file.path.red(),
         "yellow" => file.path.yellow(),
         "cyan" => file.path.cyan(),
         _ => file.path.normal(),
     };
     
-    println!("  {} ({} lines) - {:?}", path_colored, file.lines, file.file_type);
+    // Format file size
+    let size_display = if file.size_kb >= 1024.0 {
+        format!("{:.1} MB", file.size_kb / 1024.0)
+    } else {
+        format!("{:.1} KB", file.size_kb)
+    };
+    
+    println!("{} {}", emoji.bold(), path_colored.bold());
+    println!("   📏 {} lines | 💾 {}", file.lines.to_string().bold(), size_display.bold());
     
     for suggestion in &file.suggestions {
-        println!("    • {}", suggestion.dimmed());
+        println!("   {}", suggestion);
     }
     println!();
 }

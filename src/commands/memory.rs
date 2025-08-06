@@ -2,7 +2,6 @@ use anyhow::Result;
 use colored::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::process::Command;
 use std::time::Instant;
@@ -165,23 +164,23 @@ fn get_memory_leak_patterns() -> Vec<(PatternType, Regex, Severity, String, Stri
     vec![
         (
             PatternType::UnremovedEventListener,
-            Regex::new(r"addEventListener\([^)]+\)(?![\s\S]*removeEventListener)").unwrap(),
+            Regex::new(r"addEventListener\([^)]+\)").unwrap(),
             Severity::High,
-            "Event listener added without corresponding removal".to_string(),
+            "Event listener added - verify corresponding removal".to_string(),
             "Add removeEventListener in cleanup function or useEffect return".to_string(),
         ),
         (
             PatternType::TimerLeak,
-            Regex::new(r"setInterval\([^)]+\)(?![\s\S]*clearInterval)").unwrap(),
+            Regex::new(r"setInterval\([^)]+\)").unwrap(),
             Severity::High,
-            "setInterval without clearInterval cleanup".to_string(),
+            "setInterval used - verify clearInterval cleanup".to_string(),
             "Store interval ID and call clearInterval in cleanup".to_string(),
         ),
         (
             PatternType::TimerLeak,
-            Regex::new(r"setTimeout\([^)]+\)(?![\s\S]*clearTimeout)").unwrap(),
+            Regex::new(r"setTimeout\([^)]+\)").unwrap(),
             Severity::Medium,
-            "setTimeout without clearTimeout cleanup".to_string(),
+            "setTimeout used - verify clearTimeout cleanup if needed".to_string(),
             "Store timeout ID and call clearTimeout in cleanup if needed".to_string(),
         ),
         (
@@ -200,8 +199,8 @@ fn get_memory_leak_patterns() -> Vec<(PatternType, Regex, Severity, String, Stri
         ),
         (
             PatternType::CircularReference,
-            Regex::new(r"(\w+)\.(\w+)\s*=\s*\1").unwrap(),
-            Severity::High,
+            Regex::new(r"\w+\.\w+\s*=\s*\w+").unwrap(),
+            Severity::Medium,
             "Potential circular reference pattern".to_string(),
             "Use WeakMap, WeakSet, or break circular references manually".to_string(),
         ),

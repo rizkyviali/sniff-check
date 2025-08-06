@@ -62,7 +62,7 @@ pub struct FileRelationships {
     pub circular_dependencies: Vec<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DirectoryInfo {
     pub path: String,
     pub purpose: DirectoryPurpose,
@@ -150,7 +150,7 @@ pub enum Language {
     Markdown,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum DirectoryPurpose {
     Components,
     Pages,
@@ -186,7 +186,7 @@ pub enum UtilityPurpose {
     Other,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum ImportType {
     Default,
     Named,
@@ -491,9 +491,135 @@ fn determine_directory_purpose(path: &str) -> DirectoryPurpose {
     }
 }
 
-// Placeholder implementations for remaining analysis functions
-async fn analyze_components(_project_dir: &Path) -> Result<Vec<ComponentInfo>> {
-    Ok(Vec::new()) // TODO: Implement component analysis
+async fn analyze_components(project_dir: &Path) -> Result<Vec<ComponentInfo>> {
+    let mut components = Vec::new();
+    let extensions = vec!["tsx", "jsx"];
+    let files = FileUtils::find_files_with_extensions(project_dir, &extensions);
+    
+    for file in files {
+        if let Ok(content) = fs::read_to_string(&file) {
+            if is_component_file(&content) {
+                let component_info = analyze_component_file(&file, &content)?;
+                components.push(component_info);
+            }
+        }
+    }
+    
+    Ok(components)
+}
+
+fn is_component_file(content: &str) -> bool {
+    // Check for React component patterns
+    content.contains("export default") && (
+        content.contains("function ") ||
+        content.contains("const ") ||
+        content.contains("export function")
+    ) && (
+        content.contains("return (") ||
+        content.contains("return <") ||
+        content.contains("jsx") ||
+        content.contains("tsx")
+    )
+}
+
+fn analyze_component_file(path: &Path, content: &str) -> Result<ComponentInfo> {
+    let name = path.file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    
+    let relative_path = FileUtils::get_relative_path(path);
+    
+    let component_type = if relative_path.contains("/pages/") {
+        ComponentType::Page
+    } else if name.to_lowercase().contains("layout") {
+        ComponentType::Layout
+    } else if relative_path.contains("/hooks/") || name.starts_with("use") {
+        ComponentType::Hook
+    } else if name.to_lowercase().contains("context") {
+        ComponentType::Context
+    } else if relative_path.contains("/components/ui/") {
+        ComponentType::UI
+    } else {
+        ComponentType::Feature
+    };
+    
+    // Count props interfaces/types
+    let props_count = count_props_definitions(content);
+    
+    // Extract hooks used
+    let hooks_used = extract_hooks_used(content);
+    
+    // Find child components (simplified)
+    let children_components = extract_child_components(content);
+    
+    Ok(ComponentInfo {
+        name,
+        path: relative_path,
+        component_type,
+        props_count,
+        hooks_used,
+        children_components,
+    })
+}
+
+fn count_props_definitions(content: &str) -> usize {
+    content.lines().filter(|line| {
+        let line = line.trim();
+        line.contains("Props") && (line.contains("interface") || line.contains("type"))
+    }).count()
+}
+
+fn extract_hooks_used(content: &str) -> Vec<String> {
+    let mut hooks = Vec::new();
+    let hook_patterns = ["useState", "useEffect", "useContext", "useReducer", "useMemo", "useCallback", "useRef"];
+    
+    for pattern in hook_patterns {
+        if content.contains(pattern) {
+            hooks.push(pattern.to_string());
+        }
+    }
+    
+    // Extract custom hooks (starting with 'use')
+    for line in content.lines() {
+        if let Some(start) = line.find("use") {
+            let rest = &line[start..];
+            if let Some(end) = rest.find('(') {
+                let hook_name = &rest[..end];
+                if hook_name.len() > 3 && hook_name.chars().nth(3).unwrap_or(' ').is_uppercase() {
+                    hooks.push(hook_name.to_string());
+                }
+            }
+        }
+    }
+    
+    hooks.sort();
+    hooks.dedup();
+    hooks
+}
+
+fn extract_child_components(content: &str) -> Vec<String> {
+    let mut components = Vec::new();
+    
+    for line in content.lines() {
+        // Look for JSX component usage like <ComponentName
+        if line.contains('<') {
+            let parts: Vec<&str> = line.split('<').collect();
+            for part in parts.iter().skip(1) {
+                if let Some(space_pos) = part.find(|c: char| c.is_whitespace() || c == '>' || c == '/') {
+                    let component_name = &part[..space_pos];
+                    if component_name.len() > 0 && component_name.chars().next().unwrap().is_uppercase() {
+                        components.push(component_name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    
+    components.sort();
+    components.dedup();
+    components.truncate(10); // Limit to top 10
+    components
 }
 
 async fn analyze_pages(_project_dir: &Path) -> Result<Vec<PageInfo>> {
@@ -508,22 +634,394 @@ async fn analyze_utilities(_project_dir: &Path) -> Result<Vec<UtilityInfo>> {
     Ok(Vec::new()) // TODO: Implement utility analysis
 }
 
-async fn analyze_dependencies(_project_dir: &Path) -> Result<DependencyAnalysis> {
+async fn analyze_dependencies(project_dir: &Path) -> Result<DependencyAnalysis> {
+    let package_json = analyze_package_json(project_dir).await?;
+    let (imports, exports) = analyze_imports_exports(project_dir).await?;
+    let external_dependencies = extract_external_dependencies(&imports);
+    
     Ok(DependencyAnalysis {
-        package_json: None,
-        imports: HashMap::new(),
-        exports: HashMap::new(),
-        external_dependencies: Vec::new(),
-    }) // TODO: Implement dependency analysis
+        package_json,
+        imports,
+        exports,
+        external_dependencies,
+    })
 }
 
-async fn generate_architecture_insights(_structure: &ProjectStructure, _dependencies: &DependencyAnalysis) -> Result<ArchitectureInsights> {
+async fn analyze_package_json(project_dir: &Path) -> Result<Option<PackageJsonInfo>> {
+    let package_json_path = project_dir.join("package.json");
+    
+    if !package_json_path.exists() {
+        return Ok(None);
+    }
+    
+    let content = fs::read_to_string(&package_json_path)?;
+    let package_info: serde_json::Value = serde_json::from_str(&content)?;
+    
+    let dependencies = extract_dependencies(&package_info, "dependencies");
+    let dev_dependencies = extract_dependencies(&package_info, "devDependencies");
+    let scripts = extract_scripts(&package_info);
+    
+    let main_dependencies = identify_main_dependencies(&dependencies);
+    
+    Ok(Some(PackageJsonInfo {
+        dependencies,
+        dev_dependencies,
+        scripts,
+        main_dependencies,
+    }))
+}
+
+fn extract_dependencies(package_info: &serde_json::Value, key: &str) -> HashMap<String, String> {
+    package_info
+        .get(key)
+        .and_then(|deps| deps.as_object())
+        .map(|deps| {
+            deps.iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn extract_scripts(package_info: &serde_json::Value) -> HashMap<String, String> {
+    package_info
+        .get("scripts")
+        .and_then(|scripts| scripts.as_object())
+        .map(|scripts| {
+            scripts.iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn identify_main_dependencies(dependencies: &HashMap<String, String>) -> Vec<String> {
+    let main_frameworks = ["react", "next", "vue", "angular", "svelte"];
+    let main_tools = ["typescript", "webpack", "vite", "tailwindcss", "prisma"];
+    
+    let mut main_deps = Vec::new();
+    
+    for dep in dependencies.keys() {
+        if main_frameworks.iter().any(|&framework| dep.contains(framework)) ||
+           main_tools.iter().any(|&tool| dep.contains(tool)) {
+            main_deps.push(dep.clone());
+        }
+    }
+    
+    main_deps.sort();
+    main_deps
+}
+
+async fn analyze_imports_exports(project_dir: &Path) -> Result<(HashMap<String, Vec<ImportInfo>>, HashMap<String, Vec<ExportInfo>>)> {
+    let mut imports: HashMap<String, Vec<ImportInfo>> = HashMap::new();
+    let mut exports: HashMap<String, Vec<ExportInfo>> = HashMap::new();
+    
+    let extensions = vec!["ts", "tsx", "js", "jsx"];
+    let files = FileUtils::find_files_with_extensions(project_dir, &extensions);
+    
+    for file in files.iter().take(50) { // Limit to first 50 files for performance
+        if let Ok(content) = fs::read_to_string(file) {
+            let relative_path = FileUtils::get_relative_path(file);
+            
+            let file_imports = extract_imports_from_content(&content);
+            if !file_imports.is_empty() {
+                imports.insert(relative_path.clone(), file_imports);
+            }
+            
+            let file_exports = extract_exports_from_content(&content);
+            if !file_exports.is_empty() {
+                exports.insert(relative_path, file_exports);
+            }
+        }
+    }
+    
+    Ok((imports, exports))
+}
+
+fn extract_imports_from_content(content: &str) -> Vec<ImportInfo> {
+    let mut imports = Vec::new();
+    
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("import ") && line.contains("from ") {
+            if let Some(from_pos) = line.rfind("from ") {
+                let import_part = &line[6..from_pos].trim();
+                let from_part = &line[from_pos + 5..].trim().trim_matches('"').trim_matches('\'').trim_matches(';');
+                
+                let import_type = if import_part.starts_with('{') {
+                    ImportType::Named
+                } else if import_part.contains('*') {
+                    ImportType::Namespace
+                } else {
+                    ImportType::Default
+                };
+                
+                let import_names = if import_type == ImportType::Named {
+                    import_part.trim_matches('{').trim_matches('}').split(',').map(|s| s.trim().to_string()).collect()
+                } else {
+                    vec![import_part.to_string()]
+                };
+                
+                imports.push(ImportInfo {
+                    from: from_part.to_string(),
+                    imports: import_names,
+                    import_type,
+                });
+            }
+        }
+    }
+    
+    imports
+}
+
+fn extract_exports_from_content(content: &str) -> Vec<ExportInfo> {
+    let mut exports = Vec::new();
+    
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with("export ") {
+            if line.contains("export default") {
+                exports.push(ExportInfo {
+                    name: "default".to_string(),
+                    export_type: ExportType::Default,
+                    used_by: Vec::new(),
+                });
+            } else if line.contains("export {") {
+                // Named exports
+                if let Some(start) = line.find('{') {
+                    if let Some(end) = line.find('}') {
+                        let names = &line[start+1..end];
+                        for name in names.split(',') {
+                            exports.push(ExportInfo {
+                                name: name.trim().to_string(),
+                                export_type: ExportType::Named,
+                                used_by: Vec::new(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    exports
+}
+
+fn extract_external_dependencies(imports: &HashMap<String, Vec<ImportInfo>>) -> Vec<String> {
+    let mut external_deps = HashSet::new();
+    
+    for import_list in imports.values() {
+        for import in import_list {
+            let from = &import.from;
+            // External dependencies typically don't start with './' or '../'
+            if !from.starts_with('.') && !from.starts_with('/') {
+                // Extract the package name (first part before '/')
+                let package_name = from.split('/').next().unwrap_or(from);
+                external_deps.insert(package_name.to_string());
+            }
+        }
+    }
+    
+    let mut deps: Vec<String> = external_deps.into_iter().collect();
+    deps.sort();
+    deps
+}
+
+async fn generate_architecture_insights(structure: &ProjectStructure, dependencies: &DependencyAnalysis) -> Result<ArchitectureInsights> {
+    let patterns = detect_architecture_patterns(structure, dependencies);
+    let organization_score = calculate_organization_score(structure);
+    let complexity_level = determine_complexity_level(structure, dependencies);
+    let recommendations = generate_recommendations(structure, dependencies, organization_score);
+    
     Ok(ArchitectureInsights {
-        patterns: Vec::new(),
-        organization_score: 0.0,
-        complexity_level: ComplexityLevel::Simple,
-        recommendations: Vec::new(),
-    }) // TODO: Implement architecture insights
+        patterns,
+        organization_score,
+        complexity_level,
+        recommendations,
+    })
+}
+
+fn detect_architecture_patterns(structure: &ProjectStructure, dependencies: &DependencyAnalysis) -> Vec<ArchitecturePattern> {
+    let mut patterns = Vec::new();
+    
+    // Check for layered architecture
+    let has_layers = structure.directories.iter().any(|d| {
+        matches!(d.purpose, DirectoryPurpose::Services | DirectoryPurpose::Utils | DirectoryPurpose::Api)
+    });
+    if has_layers {
+        patterns.push(ArchitecturePattern::LayeredArchitecture);
+    }
+    
+    // Check for component composition
+    if !structure.components.is_empty() {
+        let has_composition = structure.components.iter().any(|c| !c.children_components.is_empty());
+        if has_composition {
+            patterns.push(ArchitecturePattern::ComponentComposition);
+        }
+    }
+    
+    // Check for custom hooks usage
+    let has_custom_hooks = structure.components.iter().any(|c| {
+        c.hooks_used.iter().any(|h| h.starts_with("use") && h.len() > 3)
+    });
+    if has_custom_hooks {
+        patterns.push(ArchitecturePattern::CustomHooks);
+    }
+    
+    // Check for context providers
+    let has_context = structure.components.iter().any(|c| {
+        matches!(c.component_type, ComponentType::Context) || 
+        c.hooks_used.contains(&"useContext".to_string())
+    });
+    if has_context {
+        patterns.push(ArchitecturePattern::ContextProviders);
+    }
+    
+    // Check for service layer
+    let has_services = structure.directories.iter().any(|d| {
+        matches!(d.purpose, DirectoryPurpose::Services)
+    });
+    if has_services {
+        patterns.push(ArchitecturePattern::ServiceLayer);
+    }
+    
+    // Check for utility-first approach
+    let has_utils = structure.directories.iter().any(|d| {
+        matches!(d.purpose, DirectoryPurpose::Utils) && d.file_count > 3
+    });
+    if has_utils {
+        patterns.push(ArchitecturePattern::UtilityFirst);
+    }
+    
+    // Check for config-driven approach
+    if let Some(package_info) = &dependencies.package_json {
+        if package_info.scripts.len() > 5 {
+            patterns.push(ArchitecturePattern::ConfigDriven);
+        }
+    }
+    
+    patterns
+}
+
+fn calculate_organization_score(structure: &ProjectStructure) -> f64 {
+    let mut score = 0.0;
+    let mut max_score = 0.0;
+    
+    // Directory structure score (30%)
+    max_score += 30.0;
+    let essential_dirs = [DirectoryPurpose::Components, DirectoryPurpose::Pages, DirectoryPurpose::Utils];
+    let present_dirs = essential_dirs.iter().filter(|&purpose| {
+        structure.directories.iter().any(|d| std::mem::discriminant(&d.purpose) == std::mem::discriminant(purpose))
+    }).count();
+    score += (present_dirs as f64 / essential_dirs.len() as f64) * 30.0;
+    
+    // Component organization score (25%)
+    max_score += 25.0;
+    if !structure.components.is_empty() {
+        let components_with_types = structure.components.iter().filter(|c| {
+            !matches!(c.component_type, ComponentType::Feature) // Feature is generic
+        }).count();
+        score += (components_with_types as f64 / structure.components.len() as f64) * 25.0;
+    }
+    
+    // File distribution score (20%)
+    max_score += 20.0;
+    let total_files: usize = structure.directories.iter().map(|d| d.file_count).sum();
+    if total_files > 0 {
+        let largest_dir_files = structure.directories.iter().map(|d| d.file_count).max().unwrap_or(0);
+        let balance_score = 1.0 - (largest_dir_files as f64 / total_files as f64);
+        score += balance_score * 20.0;
+    }
+    
+    // Naming consistency score (15%)
+    max_score += 15.0;
+    let consistent_naming = structure.directories.iter().filter(|d| {
+        !matches!(d.purpose, DirectoryPurpose::Other)
+    }).count();
+    if !structure.directories.is_empty() {
+        score += (consistent_naming as f64 / structure.directories.len() as f64) * 15.0;
+    }
+    
+    // Complexity management score (10%)
+    max_score += 10.0;
+    let reasonable_complexity = structure.directories.iter().filter(|d| {
+        d.file_count < 20 // Reasonable number of files per directory
+    }).count();
+    if !structure.directories.is_empty() {
+        score += (reasonable_complexity as f64 / structure.directories.len() as f64) * 10.0;
+    }
+    
+    if max_score > 0.0 {
+        (score / max_score) * 100.0
+    } else {
+        0.0
+    }
+}
+
+fn determine_complexity_level(structure: &ProjectStructure, dependencies: &DependencyAnalysis) -> ComplexityLevel {
+    let total_files: usize = structure.directories.iter().map(|d| d.file_count).sum();
+    let total_components = structure.components.len();
+    let external_deps = dependencies.external_dependencies.len();
+    
+    let complexity_score = total_files + (total_components * 2) + external_deps;
+    
+    match complexity_score {
+        0..=20 => ComplexityLevel::Simple,
+        21..=50 => ComplexityLevel::Moderate,
+        51..=100 => ComplexityLevel::Complex,
+        _ => ComplexityLevel::VeryComplex,
+    }
+}
+
+fn generate_recommendations(structure: &ProjectStructure, dependencies: &DependencyAnalysis, org_score: f64) -> Vec<String> {
+    let mut recommendations = Vec::new();
+    
+    // Organization recommendations
+    if org_score < 60.0 {
+        recommendations.push("🏗️ Consider reorganizing project structure for better maintainability".to_string());
+    }
+    
+    // Directory recommendations
+    let has_components = structure.directories.iter().any(|d| matches!(d.purpose, DirectoryPurpose::Components));
+    if !has_components && !structure.components.is_empty() {
+        recommendations.push("📁 Create a dedicated 'components' directory to organize React components".to_string());
+    }
+    
+    let has_utils = structure.directories.iter().any(|d| matches!(d.purpose, DirectoryPurpose::Utils));
+    if !has_utils {
+        recommendations.push("🛠️ Consider creating a 'utils' directory for shared utility functions".to_string());
+    }
+    
+    // Component recommendations
+    let large_components = structure.components.iter().filter(|c| c.children_components.len() > 8).count();
+    if large_components > 0 {
+        recommendations.push("🧩 Some components have many children - consider breaking them into smaller pieces".to_string());
+    }
+    
+    let components_without_types = structure.components.iter().filter(|c| c.props_count == 0).count();
+    if components_without_types > structure.components.len() / 2 {
+        recommendations.push("📝 Consider adding TypeScript prop interfaces for better type safety".to_string());
+    }
+    
+    // Dependency recommendations
+    if dependencies.external_dependencies.len() > 30 {
+        recommendations.push("📦 High number of external dependencies - consider auditing for unused packages".to_string());
+    }
+    
+    if let Some(package_info) = &dependencies.package_json {
+        if package_info.dev_dependencies.len() > package_info.dependencies.len() * 2 {
+            recommendations.push("🔧 Many dev dependencies - ensure they're all necessary for development".to_string());
+        }
+    }
+    
+    // File size recommendations
+    let large_dirs = structure.directories.iter().filter(|d| d.file_count > 15).count();
+    if large_dirs > 0 {
+        recommendations.push("📂 Some directories contain many files - consider creating subdirectories".to_string());
+    }
+    
+    recommendations.truncate(6); // Limit to top 6 recommendations
+    recommendations
 }
 
 async fn analyze_file_relationships(_project_dir: &Path) -> Result<FileRelationships> {
@@ -546,7 +1044,9 @@ fn print_report(report: &ContextReport, quiet: bool) {
     
     print_project_info(&report.project_info);
     print_project_structure(&report.structure);
+    print_dependencies_summary(&report.dependencies);
     print_architecture_insights(&report.architecture);
+    print_component_analysis(&report.structure);
 }
 
 fn print_project_info(info: &ProjectInfo) {
@@ -575,15 +1075,46 @@ fn print_project_structure(structure: &ProjectStructure) {
     
     if !structure.directories.is_empty() {
         println!("  Key Directories:");
-        for dir in &structure.directories {
-            let purpose_str = format!("{:?}", dir.purpose);
+        
+        // Sort directories by file count (most important first)
+        let mut sorted_dirs = structure.directories.clone();
+        sorted_dirs.sort_by(|a, b| b.file_count.cmp(&a.file_count));
+        
+        for dir in sorted_dirs.iter().take(8) { // Show top 8 directories
+            let purpose_emoji = match dir.purpose {
+                DirectoryPurpose::Components => "🧩",
+                DirectoryPurpose::Pages => "📄",
+                DirectoryPurpose::Api => "🔌",
+                DirectoryPurpose::Utils => "🛠️",
+                DirectoryPurpose::Services => "⚙️",
+                DirectoryPurpose::Styles => "🎨",
+                DirectoryPurpose::Public => "🌐",
+                DirectoryPurpose::Config => "⚙️",
+                DirectoryPurpose::Tests => "🧪",
+                _ => "📂",
+            };
+            
+            let purpose_str = match dir.purpose {
+                DirectoryPurpose::Components => "Components",
+                DirectoryPurpose::Pages => "Pages",
+                DirectoryPurpose::Api => "API",
+                DirectoryPurpose::Utils => "Utils",
+                DirectoryPurpose::Services => "Services",
+                DirectoryPurpose::Styles => "Styles",
+                DirectoryPurpose::Public => "Public",
+                DirectoryPurpose::Config => "Config",
+                DirectoryPurpose::Tests => "Tests",
+                DirectoryPurpose::Build => "Build",
+                DirectoryPurpose::Other => "Other",
+            };
+            
             println!("    {} {} ({} files, {} lines)", 
-                "•".cyan(), 
+                purpose_emoji, 
                 dir.path.bold(), 
                 dir.file_count, 
                 dir.line_count
             );
-            println!("      Purpose: {} | File types: {}", 
+            println!("      {} | File types: {}", 
                 purpose_str.dimmed(),
                 dir.main_file_types.join(", ").dimmed()
             );
@@ -593,23 +1124,154 @@ fn print_project_structure(structure: &ProjectStructure) {
     println!();
 }
 
+fn print_dependencies_summary(dependencies: &DependencyAnalysis) {
+    println!("{}", "📦 DEPENDENCIES OVERVIEW".bold().magenta());
+    println!("{}", "────────────────────────".magenta());
+    
+    if let Some(package_info) = &dependencies.package_json {
+        println!("  Production Dependencies: {}", package_info.dependencies.len());
+        println!("  Development Dependencies: {}", package_info.dev_dependencies.len());
+        
+        if !package_info.main_dependencies.is_empty() {
+            println!("  Key Frameworks/Tools:");
+            for dep in &package_info.main_dependencies {
+                if let Some(version) = package_info.dependencies.get(dep) {
+                    println!("    📚 {} ({})", dep.bold(), version.dimmed());
+                }
+            }
+        }
+        
+        if !dependencies.external_dependencies.is_empty() {
+            let external_count = dependencies.external_dependencies.len();
+            println!("  External packages used in code: {}", external_count);
+            if external_count > 10 {
+                println!("    Top imports: {}", 
+                    dependencies.external_dependencies.iter().take(8).cloned().collect::<Vec<_>>().join(", ").dimmed()
+                );
+            }
+        }
+    } else {
+        println!("  {} No package.json found", "⚠️".yellow());
+    }
+    
+    println!();
+}
+
+fn print_component_analysis(structure: &ProjectStructure) {
+    if !structure.components.is_empty() {
+        println!("{}", "⚛️  COMPONENT ANALYSIS".bold().green());
+        println!("{}", "────────────────────────".green());
+        
+        println!("  Total Components: {}", structure.components.len());
+        
+        // Group by component type
+        let mut type_counts: HashMap<String, usize> = HashMap::new();
+        for component in &structure.components {
+            let type_name = match component.component_type {
+                ComponentType::Page => "Pages",
+                ComponentType::Layout => "Layouts", 
+                ComponentType::Feature => "Features",
+                ComponentType::UI => "UI Components",
+                ComponentType::Hook => "Custom Hooks",
+                ComponentType::Context => "Context Providers",
+            }.to_string();
+            *type_counts.entry(type_name).or_insert(0) += 1;
+        }
+        
+        for (component_type, count) in type_counts {
+            println!("    {}: {}", component_type, count);
+        }
+        
+        // Show hooks usage summary
+        let mut all_hooks: HashMap<String, usize> = HashMap::new();
+        for component in &structure.components {
+            for hook in &component.hooks_used {
+                *all_hooks.entry(hook.clone()).or_insert(0) += 1;
+            }
+        }
+        
+        if !all_hooks.is_empty() {
+            println!("  Most Used Hooks:");
+            let mut hook_vec: Vec<(String, usize)> = all_hooks.into_iter().collect();
+            hook_vec.sort_by(|a, b| b.1.cmp(&a.1));
+            
+            for (hook, count) in hook_vec.iter().take(5) {
+                println!("    🎣 {} (used in {} components)", hook.bold(), count);
+            }
+        }
+        
+        // Show complex components
+        let complex_components: Vec<&ComponentInfo> = structure.components.iter()
+            .filter(|c| c.children_components.len() > 5)
+            .collect();
+        
+        if !complex_components.is_empty() {
+            println!("  Complex Components (>5 children):");
+            for component in complex_components.iter().take(3) {
+                println!("    🏗️  {} ({} children)", component.name.bold(), component.children_components.len());
+            }
+        }
+        
+        println!();
+    }
+}
+
 fn print_architecture_insights(insights: &ArchitectureInsights) {
     println!("{}", "🏛️  ARCHITECTURE INSIGHTS".bold().yellow());
     println!("{}", "─────────────────────────".yellow());
-    println!("  Organization Score: {:.1}%", insights.organization_score);
-    println!("  Complexity Level: {:?}", insights.complexity_level);
+    
+    // Color-coded organization score
+    let score_color = if insights.organization_score >= 80.0 {
+        insights.organization_score.to_string().green()
+    } else if insights.organization_score >= 60.0 {
+        insights.organization_score.to_string().yellow()
+    } else {
+        insights.organization_score.to_string().red()
+    };
+    
+    println!("  Organization Score: {:.1}%", score_color);
+    
+    let complexity_display = match insights.complexity_level {
+        ComplexityLevel::Simple => "Simple 🟢".green(),
+        ComplexityLevel::Moderate => "Moderate 🟡".yellow(),
+        ComplexityLevel::Complex => "Complex 🟠".yellow(),
+        ComplexityLevel::VeryComplex => "Very Complex 🔴".red(),
+    };
+    println!("  Complexity Level: {}", complexity_display);
     
     if !insights.patterns.is_empty() {
         println!("  Detected Patterns:");
         for pattern in &insights.patterns {
-            println!("    • {:?}", pattern);
+            let pattern_emoji = match pattern {
+                ArchitecturePattern::LayeredArchitecture => "🏗️",
+                ArchitecturePattern::ComponentComposition => "🧩",
+                ArchitecturePattern::CustomHooks => "🎣",
+                ArchitecturePattern::ContextProviders => "🌐",
+                ArchitecturePattern::ServiceLayer => "⚙️",
+                ArchitecturePattern::UtilityFirst => "🛠️",
+                ArchitecturePattern::ConfigDriven => "⚙️",
+            };
+            
+            let pattern_name = match pattern {
+                ArchitecturePattern::LayeredArchitecture => "Layered Architecture",
+                ArchitecturePattern::ComponentComposition => "Component Composition",
+                ArchitecturePattern::CustomHooks => "Custom Hooks",
+                ArchitecturePattern::ContextProviders => "Context Providers",
+                ArchitecturePattern::ServiceLayer => "Service Layer",
+                ArchitecturePattern::UtilityFirst => "Utility First",
+                ArchitecturePattern::ConfigDriven => "Config Driven",
+            };
+            
+            println!("    {} {}", pattern_emoji, pattern_name);
         }
     }
     
     if !insights.recommendations.is_empty() {
-        println!("  Recommendations:");
-        for rec in &insights.recommendations {
-            println!("    💡 {}", rec.dimmed());
+        println!();
+        println!("{}", "💡 RECOMMENDATIONS".bold().blue());
+        println!("{}", "──────────────────".blue());
+        for (i, rec) in insights.recommendations.iter().enumerate() {
+            println!("  {}. {}", i + 1, rec);
         }
     }
     

@@ -7,12 +7,21 @@ excluded_dirs = [
     ".git",
     "target",
     "build",
+    "coverage",
+    ".cache",
+    "tmp",
+    "temp",
 ]
 excluded_files = [
     "*.min.js",
     "*.bundle.js",
     "package-lock.json",
     "yarn.lock",
+    "pnpm-lock.yaml",
+    "bun.lockb",
+    "*.d.ts",
+    "*.config.js",
+    "*.config.ts",
 ]
 
 [large_files.severity_levels]
@@ -62,10 +71,25 @@ check_processes = true
 max_process_memory_mb = 1000.0
 pattern_severity_threshold = "high"
 
+# File type classification for better analysis
+[file_types]
+# Next.js specific patterns
+api_routes = ["**/api/**/*.ts", "**/api/**/*.js"]
+server_components = ["**/app/**/*.tsx", "**/app/**/page.tsx", "**/app/**/layout.tsx"]
+client_components = ["**/*client*.tsx", "**/*client*.ts", "**/*.client.tsx", "**/*.client.ts"]
+middleware = ["middleware.ts", "middleware.js", "**/middleware/**/*.ts"]
+custom_hooks = ["**/*use*.ts", "**/*use*.tsx", "**/hooks/**/*.ts"]
+type_definitions = ["**/*.d.ts", "**/types/**/*.ts", "**/@types/**/*.ts"]
+configuration = ["**/*.config.*", "**/config/**/*", "**/*.env*"]
+
 [environment]
 required_vars = [
     "NODE_ENV",
     "NEXT_PUBLIC_APP_URL",
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
+    "DATABASE_URL",
+    "VERCEL_URL",
 ]
 check_security = true
 allow_empty_values = false
@@ -74,4 +98,6 @@ env_files = [
     ".env.local",
     ".env.development",
     ".env.production",
+    ".env.staging",
+    ".env.test",
 ]

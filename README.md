@@ -57,7 +57,8 @@ Shows a beautiful terminal menu with all available commands.
 #### 🔍 Large Files Detection
 ```bash
 sniff large
-sniff large --threshold 150  # Custom threshold
+sniff --json large  # JSON output
+sniff --quiet large # Quiet mode
 ```
 
 Scans all TypeScript/JavaScript files and flags files over the threshold as "smelly code". Provides specific refactoring suggestions based on file type (component, service, API, etc.).
@@ -169,13 +170,20 @@ sniff config get types # Show configuration for specific command
 
 ```bash
 # JSON output for programmatic usage
-sniff large --json
+sniff --json large
 
 # Quiet mode for CI environments
-sniff large --quiet
+sniff --quiet large
 
 # Custom configuration
 sniff --config custom.toml large
+
+# Version information
+sniff --version
+
+# Help information
+sniff --help
+sniff large --help
 ```
 
 ## 🎯 Features
@@ -207,12 +215,21 @@ excluded_dirs = [
     ".git",
     "target",
     "build",
+    "coverage",
+    ".cache",
+    "tmp",
+    "temp",
 ]
 excluded_files = [
     "*.min.js",
     "*.bundle.js", 
     "package-lock.json",
     "yarn.lock",
+    "pnpm-lock.yaml",
+    "bun.lockb",
+    "*.d.ts",
+    "*.config.js",
+    "*.config.ts",
 ]
 
 [large_files.severity_levels]
@@ -266,6 +283,10 @@ pattern_severity_threshold = "high"
 required_vars = [
     "NODE_ENV",
     "NEXT_PUBLIC_APP_URL",
+    "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL",
+    "DATABASE_URL",
+    "VERCEL_URL",
 ]
 check_security = true
 allow_empty_values = false
@@ -274,10 +295,43 @@ env_files = [
     ".env.local",
     ".env.development", 
     ".env.production",
+    ".env.staging",
+    ".env.test",
 ]
+
+# File type classification for enhanced analysis
+[file_types]
+# Next.js specific patterns
+api_routes = ["**/api/**/*.ts", "**/api/**/*.js"]
+server_components = ["**/app/**/*.tsx", "**/app/**/page.tsx", "**/app/**/layout.tsx"]
+client_components = ["**/*client*.tsx", "**/*client*.ts", "**/*.client.tsx", "**/*.client.ts"]
+middleware = ["middleware.ts", "middleware.js", "**/middleware/**/*.ts"]
+custom_hooks = ["**/*use*.ts", "**/*use*.tsx", "**/hooks/**/*.ts"]
+type_definitions = ["**/*.d.ts", "**/types/**/*.ts", "**/@types/**/*.ts"]
+configuration = ["**/*.config.*", "**/config/**/*", "**/*.env*"]
 ```
 
 Use `sniff config init` to generate a default configuration file, or `sniff config show` to see your current settings.
+
+## 🆕 What's New in v0.1.3
+
+### 🛠️ **Bug Fixes**
+- **Fixed critical memory command crashes** - Resolved regex parsing errors that caused panics
+- **Improved error handling** - Commands now properly exit with appropriate error codes
+- **Enhanced pattern matching** - Removed unsupported regex features (lookahead/lookbehind)
+
+### ⚡ **Enhancements**
+- **Expanded file exclusions** - Added support for `coverage`, `.cache`, `pnpm-lock.yaml`, `bun.lockb`, `*.d.ts`
+- **Enhanced Next.js support** - Added file type classifications for API routes, server components, client components, middleware, and custom hooks
+- **Comprehensive environment variables** - Added `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `DATABASE_URL`, `VERCEL_URL` to defaults
+- **Better configuration management** - Enhanced `sniff.toml` structure with modern development practices
+
+### 🧹 **Code Quality**
+- **Reduced compiler warnings** - Cleaned up unused imports and dependencies
+- **Updated binary distribution** - Properly compiled binary now included in package
+- **Version consistency** - Synchronized version numbers across Cargo.toml and package.json
+
+All commands are now **fully functional and production-ready**! 🎉
 
 ## 📊 Example Output
 
@@ -455,9 +509,9 @@ jobs:
     - name: Run code quality checks
       run: |
         echo "🔍 Running sniff-check quality analysis..."
-        sniff large --json > large-files.json
-        sniff types --json > type-issues.json
-        sniff imports --json > unused-imports.json
+        sniff --json large > large-files.json
+        sniff --json types > type-issues.json
+        sniff --json imports > unused-imports.json
         
         # Show results in human-readable format
         echo "📊 Large Files Report:"
@@ -536,9 +590,9 @@ jobs:
     
     - name: Run performance analysis
       run: |
-        sniff bundle --json > bundle-analysis.json
-        sniff perf --json > performance-audit.json || echo "Performance audit skipped (no dev server)"
-        sniff memory --json > memory-check.json
+        sniff --json bundle > bundle-analysis.json
+        sniff --json perf > performance-audit.json || echo "Performance audit skipped (no dev server)"
+        sniff --json memory > memory-check.json
         
         # Show bundle analysis
         echo "📦 Bundle Analysis:"
@@ -591,17 +645,17 @@ jobs:
         
         # Additional context analysis
         echo "📊 Final project analysis:"
-        sniff context --json > final-context.json
+        sniff --json context > final-context.json
     
     - name: Block deployment on critical issues
       run: |
         # This will fail the workflow if critical issues are found
-        if sniff types --quiet | grep -q "CRITICAL"; then
+        if sniff --quiet types | grep -q "CRITICAL"; then
           echo "❌ Critical type issues found - blocking deployment"
           exit 1
         fi
         
-        if sniff large --quiet | grep -q "CRITICAL"; then
+        if sniff --quiet large | grep -q "CRITICAL"; then
           echo "❌ Critical large files found - blocking deployment"
           exit 1
         fi
