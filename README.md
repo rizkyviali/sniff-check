@@ -4,6 +4,8 @@
 
 A comprehensive Rust CLI tool that enforces opinionated code quality standards for TypeScript/Next.js projects. Fast, reliable, and provides actionable feedback to developers.
 
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizkyviali)
+
 ## 🔥 Core Philosophy
 
 - **Files over 100 lines are considered "smelly code"** and should be refactored
@@ -313,25 +315,9 @@ configuration = ["**/*.config.*", "**/config/**/*", "**/*.env*"]
 
 Use `sniff config init` to generate a default configuration file, or `sniff config show` to see your current settings.
 
-## 🆕 What's New in v0.1.3
+## 🆕 Recent Updates
 
-### 🛠️ **Bug Fixes**
-- **Fixed critical memory command crashes** - Resolved regex parsing errors that caused panics
-- **Improved error handling** - Commands now properly exit with appropriate error codes
-- **Enhanced pattern matching** - Removed unsupported regex features (lookahead/lookbehind)
-
-### ⚡ **Enhancements**
-- **Expanded file exclusions** - Added support for `coverage`, `.cache`, `pnpm-lock.yaml`, `bun.lockb`, `*.d.ts`
-- **Enhanced Next.js support** - Added file type classifications for API routes, server components, client components, middleware, and custom hooks
-- **Comprehensive environment variables** - Added `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `DATABASE_URL`, `VERCEL_URL` to defaults
-- **Better configuration management** - Enhanced `sniff.toml` structure with modern development practices
-
-### 🧹 **Code Quality**
-- **Reduced compiler warnings** - Cleaned up unused imports and dependencies
-- **Updated binary distribution** - Properly compiled binary now included in package
-- **Version consistency** - Synchronized version numbers across Cargo.toml and package.json
-
-All commands are now **fully functional and production-ready**! 🎉
+**v0.1.3** introduces significant improvements to memory analysis, progress indicators, and false positive reduction. See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes and version history.
 
 ## 📊 Example Output
 
@@ -674,6 +660,14 @@ jobs:
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+## 💖 Support
+
+If you find **sniff-check** helpful, consider supporting its development:
+
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizkyviali)
+
+Your support helps maintain and improve this tool for the entire TypeScript/Next.js community! ☕
 
 ## 🙏 Acknowledgments
 
