@@ -1,6 +1,6 @@
 {
   "name": "sniff-check",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Opinionated TypeScript/Next.js Development Toolkit",
   "main": "index.js",
   "bin": {
@@ -46,6 +46,9 @@
   "files": [
     "bin/",
     "install.js",
-    "README.md"
+    "README.md",
+    "src/",
+    "Cargo.toml",
+    "Cargo.lock"
   ]
 }
