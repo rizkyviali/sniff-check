@@ -66,6 +66,9 @@ pub struct MemoryConfig {
     pub check_processes: bool,
     pub max_process_memory_mb: f64,
     pub pattern_severity_threshold: String,
+    pub disabled_patterns: Vec<String>,
+    pub excluded_dirs: Vec<String>,
+    pub excluded_files: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -142,6 +145,24 @@ impl Default for Config {
                 check_processes: true,
                 max_process_memory_mb: 1000.0,
                 pattern_severity_threshold: "high".to_string(),
+                disabled_patterns: vec![
+                    // "UncontrolledLoop".to_string(),
+                    // "ClosureLeak".to_string(),
+                ],
+                excluded_dirs: vec![
+                    "node_modules".to_string(),
+                    ".next".to_string(),
+                    "dist".to_string(),
+                    "build".to_string(),
+                    "coverage".to_string(),
+                    ".cache".to_string(),
+                ],
+                excluded_files: vec![
+                    "*.min.js".to_string(),
+                    "*.bundle.js".to_string(),
+                    "*.d.ts".to_string(),
+                    "*.generated.*".to_string(),
+                ],
             },
             environment: EnvironmentConfig {
                 required_vars: vec![

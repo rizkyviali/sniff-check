@@ -6,6 +6,7 @@ use std::fs;
 use std::process::Command;
 use std::time::Instant;
 use walkdir::WalkDir;
+use crate::config::Config;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MemoryReport {
@@ -130,16 +131,56 @@ async fn scan_for_memory_patterns() -> Result<(Vec<MemoryPattern>, Vec<String>)>
     let mut patterns = Vec::new();
     let mut recommendations = Vec::new();
     
+    // Load configuration
+    let config = Config::load().unwrap_or_default();
+    
+    if !config.memory.check_patterns {
+        return Ok((patterns, recommendations));
+    }
+    
     // Memory leak detection patterns
-    let leak_patterns = get_memory_leak_patterns();
+    let leak_patterns = get_memory_leak_patterns(&config);
+    
+    // Use configured directories to exclude from scanning
+    let excluded_dirs = &config.memory.excluded_dirs;
     
     // Scan TypeScript/JavaScript files
     for entry in WalkDir::new(".").max_depth(5) {
         if let Ok(entry) = entry {
+            let path = entry.path();
+            
+            // Skip excluded directories
+            if path.components().any(|component| {
+                if let Some(dir_name) = component.as_os_str().to_str() {
+                    excluded_dirs.iter().any(|excluded| dir_name == excluded)
+                } else {
+                    false
+                }
+            }) {
+                continue;
+            }
+            
             if entry.file_type().is_file() {
-                let path = entry.path();
                 if let Some(extension) = path.extension() {
                     if matches!(extension.to_str(), Some("ts") | Some("tsx") | Some("js") | Some("jsx")) {
+                        // Skip excluded files based on configuration
+                        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                            if config.memory.excluded_files.iter().any(|pattern| {
+                                if pattern.contains('*') {
+                                    let regex_pattern = pattern.replace('*', ".*");
+                                    if let Ok(regex) = Regex::new(&regex_pattern) {
+                                        regex.is_match(file_name)
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    file_name == pattern
+                                }
+                            }) {
+                                continue;
+                            }
+                        }
+                        
                         if let Ok(content) = fs::read_to_string(path) {
                             let file_patterns = analyze_file_for_patterns(path.to_string_lossy().to_string(), &content, &leak_patterns)?;
                             patterns.extend(file_patterns);
@@ -160,8 +201,8 @@ async fn scan_for_memory_patterns() -> Result<(Vec<MemoryPattern>, Vec<String>)>
     Ok((patterns, recommendations))
 }
 
-fn get_memory_leak_patterns() -> Vec<(PatternType, Regex, Severity, String, String)> {
-    vec![
+fn get_memory_leak_patterns(config: &Config) -> Vec<(PatternType, Regex, Severity, String, String)> {
+    let mut patterns = vec![
         (
             PatternType::UnremovedEventListener,
             Regex::new(r"addEventListener\([^)]+\)").unwrap(),
@@ -193,16 +234,16 @@ fn get_memory_leak_patterns() -> Vec<(PatternType, Regex, Severity, String, Stri
         (
             PatternType::UncontrolledLoop,
             Regex::new(r"while\s*\(\s*true\s*\)").unwrap(),
-            Severity::Critical,
-            "Infinite loop detected".to_string(),
-            "Add proper exit conditions to prevent infinite loops".to_string(),
+            Severity::Medium,
+            "Potential infinite loop pattern".to_string(),
+            "Verify proper exit conditions exist within the loop body".to_string(),
         ),
         (
             PatternType::CircularReference,
-            Regex::new(r"\w+\.\w+\s*=\s*\w+").unwrap(),
-            Severity::Medium,
-            "Potential circular reference pattern".to_string(),
-            "Use WeakMap, WeakSet, or break circular references manually".to_string(),
+            Regex::new(r"\w+\.\w+\s*=\s*\w+(?:\.\w+)*\s*$").unwrap(),
+            Severity::Low,
+            "Potential circular reference pattern (requires manual review)".to_string(),
+            "Check if this creates circular references; use WeakMap/WeakSet if needed".to_string(),
         ),
         (
             PatternType::LargeObjectRetention,
@@ -218,19 +259,58 @@ fn get_memory_leak_patterns() -> Vec<(PatternType, Regex, Severity, String, Stri
             "Nested function closures may retain outer scope".to_string(),
             "Minimize closure scope and avoid unnecessary variable capture".to_string(),
         ),
-    ]
+    ];
+    
+    // Filter out disabled patterns
+    patterns.retain(|(pattern_type, _, _, _, _)| {
+        let pattern_name = format!("{:?}", pattern_type);
+        !config.memory.disabled_patterns.contains(&pattern_name)
+    });
+    
+    patterns
 }
 
 fn analyze_file_for_patterns(file_path: String, content: &str, patterns: &[(PatternType, Regex, Severity, String, String)]) -> Result<Vec<MemoryPattern>> {
     let mut file_patterns = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
     
-    for (line_num, line) in content.lines().enumerate() {
+    for (line_num, line) in lines.iter().enumerate() {
         for (pattern_type, regex, severity, description, recommendation) in patterns {
             if regex.is_match(line) {
-                // Skip if it's in a comment
+                // Skip if it's in a comment or string literal
                 let trimmed_line = line.trim();
-                if trimmed_line.starts_with("//") || trimmed_line.starts_with("/*") {
+                if trimmed_line.starts_with("//") || 
+                   trimmed_line.starts_with("/*") ||
+                   trimmed_line.starts_with("*") ||
+                   is_in_string_literal(line) {
                     continue;
+                }
+                
+                // Skip common false positives
+                if should_skip_pattern(pattern_type, line) {
+                    continue;
+                }
+                
+                // Special handling for infinite loops - check for break conditions
+                if matches!(pattern_type, PatternType::UncontrolledLoop) {
+                    if let Some(loop_context) = analyze_loop_context(&lines, line_num) {
+                        if loop_context.has_break_conditions {
+                            // Downgrade severity if break conditions are found
+                            let adjusted_severity = Severity::Low;
+                            let adjusted_description = format!("{} (has exit conditions)", description);
+                            
+                            file_patterns.push(MemoryPattern {
+                                file_path: file_path.clone(),
+                                line_number: line_num + 1,
+                                pattern_type: pattern_type.clone(),
+                                code_snippet: line.trim().to_string(),
+                                severity: adjusted_severity,
+                                description: adjusted_description,
+                                recommendation: "Verify exit conditions are reachable in all execution paths".to_string(),
+                            });
+                            continue;
+                        }
+                    }
                 }
                 
                 file_patterns.push(MemoryPattern {
@@ -247,6 +327,132 @@ fn analyze_file_for_patterns(file_path: String, content: &str, patterns: &[(Patt
     }
     
     Ok(file_patterns)
+}
+
+#[derive(Debug)]
+struct LoopContext {
+    has_break_conditions: bool,
+    has_return_statements: bool,
+    has_throw_statements: bool,
+    nesting_level: usize,
+}
+
+fn analyze_loop_context(lines: &[&str], loop_line: usize) -> Option<LoopContext> {
+    let mut brace_count = 0;
+    let mut found_opening_brace = false;
+    let mut has_break = false;
+    let mut has_return = false;
+    let mut has_throw = false;
+    
+    // Look for the opening brace of the loop
+    for i in loop_line..lines.len().min(loop_line + 20) {
+        let line = lines[i].trim();
+        
+        for ch in line.chars() {
+            match ch {
+                '{' => {
+                    brace_count += 1;
+                    found_opening_brace = true;
+                }
+                '}' => {
+                    brace_count -= 1;
+                    if found_opening_brace && brace_count == 0 {
+                        // End of loop body reached
+                        return Some(LoopContext {
+                            has_break_conditions: has_break || has_return || has_throw,
+                            has_return_statements: has_return,
+                            has_throw_statements: has_throw,
+                            nesting_level: 0,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        if found_opening_brace && brace_count > 0 {
+            // Check for exit conditions within the loop body
+            if line.contains("break") && !line.starts_with("//") {
+                has_break = true;
+            }
+            if line.contains("return") && !line.starts_with("//") {
+                has_return = true;
+            }
+            if line.contains("throw") && !line.starts_with("//") {
+                has_throw = true;
+            }
+            
+            // Also check for common exit patterns
+            if line.contains("if") && (line.contains("break") || line.contains("return")) {
+                has_break = true;
+            }
+        }
+    }
+    
+    if found_opening_brace {
+        Some(LoopContext {
+            has_break_conditions: has_break || has_return || has_throw,
+            has_return_statements: has_return,
+            has_throw_statements: has_throw,
+            nesting_level: 0,
+        })
+    } else {
+        None
+    }
+}
+
+/// Check if a line is likely within a string literal or template
+fn is_in_string_literal(line: &str) -> bool {
+    let trimmed = line.trim();
+    
+    // Check for common string patterns
+    (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
+    (trimmed.starts_with('\'') && trimmed.ends_with('\'')) ||
+    (trimmed.starts_with('`') && trimmed.ends_with('`')) ||
+    trimmed.contains("console.log") ||
+    trimmed.contains("console.error") ||
+    trimmed.contains("console.warn")
+}
+
+/// Check if we should skip a pattern match due to common false positives
+fn should_skip_pattern(pattern_type: &PatternType, line: &str) -> bool {
+    let line_lower = line.to_lowercase();
+    
+    match pattern_type {
+        PatternType::UncontrolledLoop => {
+            // Skip while(true) in libraries or config files
+            line_lower.contains("analytics") ||
+            line_lower.contains("tracking") ||
+            line_lower.contains("polyfill") ||
+            line_lower.contains("shim") ||
+            line_lower.contains("vendor")
+        },
+        PatternType::ClosureLeak => {
+            // Skip common patterns that are typically safe
+            line_lower.contains("react") ||
+            line_lower.contains("component") ||
+            line_lower.contains("hook") ||
+            line_lower.contains("callback") ||
+            line_lower.contains("handler")
+        },
+        PatternType::CircularReference => {
+            // Skip common safe assignments
+            line_lower.contains("this.") ||
+            line_lower.contains("const ") ||
+            line_lower.contains("let ") ||
+            line_lower.contains("var ") ||
+            line_lower.contains("state.") ||
+            line_lower.contains("props.")
+        },
+        PatternType::UnboundedArrayGrowth => {
+            // Skip when array growth is bounded by other means
+            line_lower.contains("map(") ||
+            line_lower.contains("filter(") ||
+            line_lower.contains("reduce(") ||
+            line_lower.contains("foreach(")
+        },
+        _ => false,
+    }
 }
 
 async fn check_node_processes() -> Result<Vec<NodeProcess>> {
