@@ -343,7 +343,7 @@ async fn detect_languages(project_dir: &Path) -> Result<Vec<Language>> {
     let mut languages = HashSet::new();
     let extensions = ["ts", "tsx", "js", "jsx", "css", "scss", "json", "md"];
     
-    let files = FileUtils::find_files_with_extensions(project_dir, &extensions);
+    let files = FileUtils::find_files_with_progress(project_dir, &extensions, true)?;
     
     for file in files {
         if let Some(ext) = file.extension() {
@@ -413,7 +413,7 @@ async fn analyze_directories(project_dir: &Path) -> Result<Vec<DirectoryInfo>> {
 
 async fn count_files_and_lines(project_dir: &Path) -> Result<(usize, usize)> {
     let extensions = vec!["ts", "tsx", "js", "jsx"];
-    let files = FileUtils::find_files_with_extensions(project_dir, &extensions);
+    let files = FileUtils::find_files_with_progress(project_dir, &extensions, true)?;
     let total_files = files.len();
     
     let total_lines: usize = FileUtils::process_files_parallel(
@@ -494,7 +494,7 @@ fn determine_directory_purpose(path: &str) -> DirectoryPurpose {
 async fn analyze_components(project_dir: &Path) -> Result<Vec<ComponentInfo>> {
     let mut components = Vec::new();
     let extensions = vec!["tsx", "jsx"];
-    let files = FileUtils::find_files_with_extensions(project_dir, &extensions);
+    let files = FileUtils::find_files_with_progress(project_dir, &extensions, true)?;
     
     for file in files {
         if let Ok(content) = fs::read_to_string(&file) {
@@ -717,7 +717,7 @@ async fn analyze_imports_exports(project_dir: &Path) -> Result<(HashMap<String, 
     let mut exports: HashMap<String, Vec<ExportInfo>> = HashMap::new();
     
     let extensions = vec!["ts", "tsx", "js", "jsx"];
-    let files = FileUtils::find_files_with_extensions(project_dir, &extensions);
+    let files = FileUtils::find_files_with_progress(project_dir, &extensions, true)?;
     
     for file in files.iter().take(50) { // Limit to first 50 files for performance
         if let Ok(content) = fs::read_to_string(file) {

@@ -52,7 +52,7 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
         println!("{}", "🔍 Checking TypeScript type coverage...".bold().blue());
     }
     
-    let report = analyze_typescript_files()?;
+    let report = analyze_typescript_files(quiet)?;
     
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -93,18 +93,18 @@ fn get_regex_patterns() -> &'static RegexPatterns {
     REGEX_PATTERNS.get_or_init(|| RegexPatterns::new().expect("Failed to compile regex patterns"))
 }
 
-fn analyze_typescript_files() -> Result<TypeScriptReport> {
+fn analyze_typescript_files(quiet: bool) -> Result<TypeScriptReport> {
     let current_dir = std::env::current_dir()?;
     let extensions = vec!["ts", "tsx"];
     
-    let files = FileUtils::find_files_with_extensions(&current_dir, &extensions);
+    let files = FileUtils::find_files_with_progress(&current_dir, &extensions, quiet)?;
     let files_count = files.len();
     
     let all_issues: Vec<Vec<TypeIssue>> = FileUtils::process_files_parallel(
         &files,
         |path| analyze_file_optimized(path),
         "Analyzing TypeScript files",
-        false
+        quiet
     )?;
     
     let issues: Vec<TypeIssue> = all_issues.into_iter().flatten().collect();

@@ -87,6 +87,7 @@ impl FileUtils {
                 .template("{spinner:.green} {msg}")
                 .unwrap());
             pb.set_message("Scanning files...");
+            pb.enable_steady_tick(std::time::Duration::from_millis(100));
             Some(pb)
         } else {
             None

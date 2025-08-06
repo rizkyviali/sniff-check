@@ -86,7 +86,7 @@ pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
         println!("{}", "🔍 Scanning for large files...".bold().blue());
     }
     
-    let report = scan_large_files(threshold)?;
+    let report = scan_large_files(threshold, quiet)?;
     
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -101,12 +101,12 @@ pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
     Ok(())
 }
 
-fn scan_large_files(threshold: usize) -> Result<LargeFileReport> {
+fn scan_large_files(threshold: usize, quiet: bool) -> Result<LargeFileReport> {
     let current_dir = std::env::current_dir()?;
     let config = Config::load().unwrap_or_default();
     let extensions = vec!["ts", "tsx", "js", "jsx"];
     
-    let files = FileUtils::find_files_with_extensions(&current_dir, &extensions);
+    let files = FileUtils::find_files_with_progress(&current_dir, &extensions, quiet)?;
     let total_files = files.len();
     
     let large_files: Vec<LargeFile> = FileUtils::process_files_parallel(
@@ -121,7 +121,7 @@ fn scan_large_files(threshold: usize) -> Result<LargeFileReport> {
             }
         },
         "Analyzing file sizes",
-        false
+        quiet
     )?
     .into_iter()
     .filter_map(|opt| opt)
