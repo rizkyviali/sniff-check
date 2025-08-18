@@ -2,17 +2,18 @@ use clap::{Parser, Subcommand};
 use std::process;
 
 mod commands;
-mod analyzers;
 mod config;
 mod utils;
+mod common;
 
-use commands::*;
+// Import specific command functions instead of using glob imports
+use commands::{menu, large, types, imports, bundle, perf, memory, env, context, deploy};
 use config::ConfigUtils;
 
 #[derive(Parser)]
 #[command(name = "sniff")]
 #[command(about = "Opinionated TypeScript/Next.js Development Toolkit")]
-#[command(version = "0.1.3")]
+#[command(version = "0.1.5")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
