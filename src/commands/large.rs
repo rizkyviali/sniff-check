@@ -1,12 +1,12 @@
 use anyhow::Result;
 use colored::*;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use crate::utils::FileUtils;
 use crate::config::Config;
+use crate::common::{ExitCode, check_failure_threshold, init_command, complete_command, create_standard_json_output, output_result, OptimizedFileWalker, PerformanceMonitor, count_lines_optimized};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LargeFileReport {
@@ -82,52 +82,79 @@ pub struct Summary {
 }
 
 pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
-    if !quiet {
-        println!("{}", "🔍 Scanning for large files...".bold().blue());
-    }
+    let start_time = std::time::Instant::now();
+    init_command("large file", quiet);
     
     let report = scan_large_files(threshold, quiet)?;
+    let duration_ms = start_time.elapsed().as_millis() as u64;
     
-    if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        print_report(&report, quiet);
-    }
+    // Create standardized JSON response
+    let response = create_standard_json_output(
+        "large",
+        &report,
+        report.summary.total_files_scanned,
+        report.summary.large_files_found,
+        Some(duration_ms),
+    );
     
-    if report.summary.large_files_found > 0 {
-        std::process::exit(1);
-    }
+    output_result(&response, json, quiet, |report, quiet| print_report(report, quiet))?;
+    
+    // Complete command and use common error handling
+    complete_command("large file", report.summary.large_files_found == 0, quiet);
+    check_failure_threshold(report.summary.large_files_found > 0, ExitCode::ThresholdExceeded);
     
     Ok(())
 }
 
 fn scan_large_files(threshold: usize, quiet: bool) -> Result<LargeFileReport> {
+    let mut perf_monitor = PerformanceMonitor::new();
     let current_dir = std::env::current_dir()?;
-    let config = Config::load().unwrap_or_default();
-    let extensions = vec!["ts", "tsx", "js", "jsx"];
     
-    let files = FileUtils::find_files_with_progress(&current_dir, &extensions, quiet)?;
+    // Use optimized file walker for better performance
+    let walker = OptimizedFileWalker::new()
+        .max_depth(10) // Reasonable depth limit
+        .parallel_threshold(20); // Use parallel processing for 20+ files
+    
+    let files = if quiet {
+        walker.walk_with_extensions(&current_dir, &["ts", "tsx", "js", "jsx"])
+    } else {
+        // For non-quiet mode, could add progress tracking here
+        walker.walk_with_extensions(&current_dir, &["ts", "tsx", "js", "jsx"])
+    };
+    
+    perf_monitor.checkpoint("File discovery");
     let total_files = files.len();
     
-    let large_files: Vec<LargeFile> = FileUtils::process_files_parallel(
+    // Use optimized parallel processing with performance monitoring
+    let large_file_options: Vec<Option<LargeFile>> = walker.process_files_parallel(
         &files,
         |path| {
-            let line_count = FileUtils::count_lines_optimized(path)?;
+            // Use optimized line counting
+            let line_count = count_lines_optimized(path).unwrap_or(0);
             if line_count >= threshold {
-                let size_bytes = fs::metadata(path)?.len();
-                Ok(Some(create_large_file_info(path, line_count, size_bytes, &config)))
+                let size_bytes = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                let config = Config::load().unwrap_or_default();
+                Some(create_large_file_info(path, line_count, size_bytes, &config))
             } else {
-                Ok(None)
+                None
             }
-        },
-        "Analyzing file sizes",
-        quiet
-    )?
-    .into_iter()
-    .filter_map(|opt| opt)
-    .collect();
+        }
+    );
+    
+    let large_files: Vec<LargeFile> = large_file_options.into_iter().flatten().collect();
+    
+    perf_monitor.checkpoint("File analysis");
     
     let summary = create_summary(total_files, &large_files);
+    perf_monitor.checkpoint("Summary creation");
+    
+    // Optional performance reporting for debugging
+    if std::env::var("SNIFF_PERF_DEBUG").is_ok() && !quiet {
+        eprintln!("\n--- Performance Report ---");
+        perf_monitor.print_report();
+        eprintln!("Files processed: {}", total_files);
+        eprintln!("Large files found: {}", large_files.len());
+    }
     
     Ok(LargeFileReport {
         files: large_files,
@@ -223,7 +250,7 @@ fn determine_severity_with_config(lines: usize, config: &Config) -> Severity {
     }
 }
 
-fn generate_suggestions(file_type: &FileType, lines: usize) -> Vec<String> {
+fn generate_suggestions(file_type: &FileType, _lines: usize) -> Vec<String> {
     let mut suggestions = Vec::new();
     
     match file_type {

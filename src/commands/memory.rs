@@ -7,6 +7,7 @@ use std::process::Command;
 use std::time::Instant;
 use walkdir::WalkDir;
 use crate::config::Config;
+use crate::common::{get_common_patterns, is_in_string_literal_or_comment, Severity};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MemoryReport {
@@ -40,13 +41,6 @@ pub enum PatternType {
     ClosureLeak,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Severity {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeProcess {
@@ -201,60 +195,41 @@ async fn scan_for_memory_patterns() -> Result<(Vec<MemoryPattern>, Vec<String>)>
     Ok((patterns, recommendations))
 }
 
-fn get_memory_leak_patterns(config: &Config) -> Vec<(PatternType, Regex, Severity, String, String)> {
+fn get_memory_leak_patterns(config: &Config) -> Vec<(PatternType, &'static regex::Regex, Severity, String, String)> {
+    let common_patterns = get_common_patterns();
+    
     let mut patterns = vec![
         (
             PatternType::UnremovedEventListener,
-            Regex::new(r"addEventListener\([^)]+\)").unwrap(),
+            &common_patterns.event_listener,
             Severity::High,
             "Event listener added - verify corresponding removal".to_string(),
             "Add removeEventListener in cleanup function or useEffect return".to_string(),
         ),
         (
             PatternType::TimerLeak,
-            Regex::new(r"setInterval\([^)]+\)").unwrap(),
+            &common_patterns.timer_function,
             Severity::High,
-            "setInterval used - verify clearInterval cleanup".to_string(),
-            "Store interval ID and call clearInterval in cleanup".to_string(),
-        ),
-        (
-            PatternType::TimerLeak,
-            Regex::new(r"setTimeout\([^)]+\)").unwrap(),
-            Severity::Medium,
-            "setTimeout used - verify clearTimeout cleanup if needed".to_string(),
-            "Store timeout ID and call clearTimeout in cleanup if needed".to_string(),
+            "Timer function used - verify cleanup".to_string(),
+            "Store timer ID and call clear function in cleanup".to_string(),
         ),
         (
             PatternType::UnboundedArrayGrowth,
-            Regex::new(r"\w+\.push\([^)]+\)").unwrap(),
+            &common_patterns.array_push,
             Severity::Medium,
             "Array push without bounds checking".to_string(),
             "Implement array size limits or periodic cleanup".to_string(),
         ),
         (
             PatternType::UncontrolledLoop,
-            Regex::new(r"while\s*\(\s*true\s*\)").unwrap(),
+            &common_patterns.infinite_loop,
             Severity::Medium,
             "Potential infinite loop pattern".to_string(),
             "Verify proper exit conditions exist within the loop body".to_string(),
         ),
         (
-            PatternType::CircularReference,
-            Regex::new(r"\w+\.\w+\s*=\s*\w+(?:\.\w+)*\s*$").unwrap(),
-            Severity::Low,
-            "Potential circular reference pattern (requires manual review)".to_string(),
-            "Check if this creates circular references; use WeakMap/WeakSet if needed".to_string(),
-        ),
-        (
-            PatternType::LargeObjectRetention,
-            Regex::new(r"new\s+Array\(\s*\d{4,}\s*\)").unwrap(),
-            Severity::Medium,
-            "Large array allocation".to_string(),
-            "Consider lazy loading or chunking for large data sets".to_string(),
-        ),
-        (
             PatternType::ClosureLeak,
-            Regex::new(r"function[^{]*\{[\s\S]*function[^{]*\{[\s\S]*\}[\s\S]*\}").unwrap(),
+            &common_patterns.closure_pattern,
             Severity::Low,
             "Nested function closures may retain outer scope".to_string(),
             "Minimize closure scope and avoid unnecessary variable capture".to_string(),
@@ -270,7 +245,7 @@ fn get_memory_leak_patterns(config: &Config) -> Vec<(PatternType, Regex, Severit
     patterns
 }
 
-fn analyze_file_for_patterns(file_path: String, content: &str, patterns: &[(PatternType, Regex, Severity, String, String)]) -> Result<Vec<MemoryPattern>> {
+fn analyze_file_for_patterns(file_path: String, content: &str, patterns: &[(PatternType, &'static regex::Regex, Severity, String, String)]) -> Result<Vec<MemoryPattern>> {
     let mut file_patterns = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
     
@@ -278,11 +253,7 @@ fn analyze_file_for_patterns(file_path: String, content: &str, patterns: &[(Patt
         for (pattern_type, regex, severity, description, recommendation) in patterns {
             if regex.is_match(line) {
                 // Skip if it's in a comment or string literal
-                let trimmed_line = line.trim();
-                if trimmed_line.starts_with("//") || 
-                   trimmed_line.starts_with("/*") ||
-                   trimmed_line.starts_with("*") ||
-                   is_in_string_literal(line) {
+                if is_in_string_literal_or_comment(line) {
                     continue;
                 }
                 
@@ -332,9 +303,7 @@ fn analyze_file_for_patterns(file_path: String, content: &str, patterns: &[(Patt
 #[derive(Debug)]
 struct LoopContext {
     has_break_conditions: bool,
-    has_return_statements: bool,
-    has_throw_statements: bool,
-    nesting_level: usize,
+    // Unused fields removed: has_return_statements, has_throw_statements, nesting_level
 }
 
 fn analyze_loop_context(lines: &[&str], loop_line: usize) -> Option<LoopContext> {
@@ -360,9 +329,6 @@ fn analyze_loop_context(lines: &[&str], loop_line: usize) -> Option<LoopContext>
                         // End of loop body reached
                         return Some(LoopContext {
                             has_break_conditions: has_break || has_return || has_throw,
-                            has_return_statements: has_return,
-                            has_throw_statements: has_throw,
-                            nesting_level: 0,
                         });
                     }
                 }
@@ -392,27 +358,12 @@ fn analyze_loop_context(lines: &[&str], loop_line: usize) -> Option<LoopContext>
     if found_opening_brace {
         Some(LoopContext {
             has_break_conditions: has_break || has_return || has_throw,
-            has_return_statements: has_return,
-            has_throw_statements: has_throw,
-            nesting_level: 0,
         })
     } else {
         None
     }
 }
 
-/// Check if a line is likely within a string literal or template
-fn is_in_string_literal(line: &str) -> bool {
-    let trimmed = line.trim();
-    
-    // Check for common string patterns
-    (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
-    (trimmed.starts_with('\'') && trimmed.ends_with('\'')) ||
-    (trimmed.starts_with('`') && trimmed.ends_with('`')) ||
-    trimmed.contains("console.log") ||
-    trimmed.contains("console.error") ||
-    trimmed.contains("console.warn")
-}
 
 /// Check if we should skip a pattern match due to common false positives
 fn should_skip_pattern(pattern_type: &PatternType, line: &str) -> bool {
@@ -671,6 +622,7 @@ fn print_memory_pattern(pattern: &MemoryPattern) {
         Severity::High => "⚠️".yellow(),
         Severity::Medium => "📋".white(),
         Severity::Low => "ℹ️".cyan(),
+        Severity::Info => "ℹ️".blue(),
     };
     
     println!("  {} {}:{}", severity_icon, pattern.file_path, pattern.line_number);

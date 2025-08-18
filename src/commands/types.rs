@@ -1,14 +1,11 @@
 use anyhow::Result;
 use colored::*;
-use rayon::prelude::*;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::Path;
 use crate::utils::FileUtils;
-use crate::config::Config;
+use crate::common::{FileScanner, get_common_patterns, ExitCode, check_failure_threshold};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TypeScriptReport {
@@ -60,44 +57,18 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
         print_report(&report, quiet);
     }
     
-    // Exit with error code if there are critical issues
-    if report.summary.any_usage_count > 0 || report.summary.ts_ignore_count > 5 {
-        std::process::exit(1);
-    }
+    // Use common error handling for critical type issues
+    let has_critical_issues = report.summary.any_usage_count > 0 || report.summary.ts_ignore_count > 5;
+    check_failure_threshold(has_critical_issues, ExitCode::ValidationFailed);
     
     Ok(())
 }
 
-// Global regex patterns compiled once
-static REGEX_PATTERNS: OnceLock<RegexPatterns> = OnceLock::new();
-
-struct RegexPatterns {
-    any_regex: Regex,
-    function_regex: Regex,
-    ts_ignore_regex: Regex,
-    ts_expect_error_regex: Regex,
-}
-
-impl RegexPatterns {
-    fn new() -> Result<Self> {
-        Ok(Self {
-            any_regex: Regex::new(r"\b:\s*any\b")?,
-            function_regex: Regex::new(r"(?:function\s+\w+|const\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>|(?:async\s+)?function\s*\([^)]*\))\s*\{")?,
-            ts_ignore_regex: Regex::new(r"@ts-ignore")?,
-            ts_expect_error_regex: Regex::new(r"@ts-expect-error")?,
-        })
-    }
-}
-
-fn get_regex_patterns() -> &'static RegexPatterns {
-    REGEX_PATTERNS.get_or_init(|| RegexPatterns::new().expect("Failed to compile regex patterns"))
-}
 
 fn analyze_typescript_files(quiet: bool) -> Result<TypeScriptReport> {
     let current_dir = std::env::current_dir()?;
-    let extensions = vec!["ts", "tsx"];
-    
-    let files = FileUtils::find_files_with_progress(&current_dir, &extensions, quiet)?;
+    let scanner = FileScanner::with_defaults();
+    let files = scanner.find_files_with_extensions(&current_dir, &["ts", "tsx"]);
     let files_count = files.len();
     
     let all_issues: Vec<Vec<TypeIssue>> = FileUtils::process_files_parallel(
@@ -113,32 +84,18 @@ fn analyze_typescript_files(quiet: bool) -> Result<TypeScriptReport> {
     Ok(TypeScriptReport { issues, summary })
 }
 
-fn is_excluded_path(path: &Path) -> bool {
-    let excluded_dirs = vec![
-        "node_modules", ".next", "dist", "build", ".git", 
-        "coverage", "target", ".vscode", ".idea"
-    ];
-    
-    path.ancestors().any(|ancestor| {
-        if let Some(name) = ancestor.file_name() {
-            excluded_dirs.contains(&name.to_string_lossy().as_ref())
-        } else {
-            false
-        }
-    })
-}
 
 fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
     let content = fs::read_to_string(path)?;
     let mut issues = Vec::new();
-    let patterns = get_regex_patterns();
+    let patterns = get_common_patterns();
     let file_path = FileUtils::get_relative_path(path);
     
     for (line_num, line) in content.lines().enumerate() {
         let line_num = line_num + 1;
         
         // Check for 'any' usage
-        for mat in patterns.any_regex.find_iter(line) {
+        for mat in patterns.any_type.find_iter(line) {
             issues.push(TypeIssue {
                 file: file_path.clone(),
                 line: line_num,
@@ -150,7 +107,7 @@ fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
         }
         
         // Check for @ts-ignore
-        if patterns.ts_ignore_regex.is_match(line) {
+        if patterns.ts_ignore.is_match(line) {
             issues.push(TypeIssue {
                 file: file_path.clone(),
                 line: line_num,
@@ -162,7 +119,7 @@ fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
         }
         
         // Check for @ts-expect-error
-        if patterns.ts_expect_error_regex.is_match(line) {
+        if patterns.ts_expect_error.is_match(line) {
             issues.push(TypeIssue {
                 file: file_path.clone(),
                 line: line_num,
@@ -174,7 +131,7 @@ fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
         }
         
         // Check for functions without return types (simplified check)
-        if patterns.function_regex.is_match(line) && !line.contains("):") && !line.trim_end().ends_with("=> {") {
+        if patterns.function_def.is_match(line) && !line.contains("):") && !line.trim_end().ends_with("=> {") {
             if !line.contains("constructor") && !line.contains("() {") {
                 issues.push(TypeIssue {
                     file: file_path.clone(),

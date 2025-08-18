@@ -270,10 +270,10 @@ async fn check_performance_patterns() -> Result<(Vec<AuditResult>, Vec<String>)>
     use std::fs;
     
     let mut audit_results = Vec::new();
-    let mut recommendations = Vec::new();
+    let recommendations = Vec::new();
     let mut has_lazy_loading = false;
     let mut has_image_optimization = false;
-    let mut has_code_splitting = false;
+    let _has_code_splitting = false;
     
     // Scan for performance patterns
     for entry in WalkDir::new(".").max_depth(3) {
@@ -295,7 +295,7 @@ async fn check_performance_patterns() -> Result<(Vec<AuditResult>, Vec<String>)>
                             
                             // Check for code splitting
                             if content.contains("import(") {
-                                has_code_splitting = true;
+                                // Code splitting detected but not used in current logic
                             }
                         }
                     }

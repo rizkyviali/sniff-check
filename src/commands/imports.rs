@@ -1,12 +1,11 @@
 use anyhow::Result;
 use colored::*;
 use rayon::prelude::*;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
+use std::path::Path;
+use crate::common::{FileScanner, get_common_patterns, is_keyword_or_builtin, ExitCode, check_failure_threshold};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportsReport {
@@ -52,33 +51,16 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
         print_report(&report, quiet);
     }
     
-    // Exit with non-zero code if unused imports found
-    if report.summary.unused_imports > 0 {
-        std::process::exit(1);
-    }
+    // Use common error handling for unused imports
+    check_failure_threshold(report.summary.unused_imports > 0, ExitCode::ValidationFailed);
     
     Ok(())
 }
 
 fn analyze_imports() -> Result<ImportsReport> {
     let current_dir = std::env::current_dir()?;
-    let extensions = vec!["ts", "tsx", "js", "jsx"];
-    
-    let files: Vec<PathBuf> = WalkDir::new(&current_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| {
-            if let Some(ext) = e.path().extension() {
-                extensions.contains(&ext.to_string_lossy().as_ref())
-            } else {
-                false
-            }
-        })
-        .filter(|e| !is_excluded_path(e.path()))
-        .map(|e| e.path().to_path_buf())
-        .collect();
-    
+    let scanner = FileScanner::with_defaults();
+    let files = scanner.find_js_ts_files(&current_dir);
     let files_count = files.len();
     
     let file_analyses: Vec<FileAnalysis> = files
@@ -107,20 +89,6 @@ fn analyze_imports() -> Result<ImportsReport> {
     })
 }
 
-fn is_excluded_path(path: &Path) -> bool {
-    let excluded_dirs = vec![
-        "node_modules", ".next", "dist", "build", ".git", 
-        "coverage", "target", ".vscode", ".idea"
-    ];
-    
-    path.ancestors().any(|ancestor| {
-        if let Some(name) = ancestor.file_name() {
-            excluded_dirs.contains(&name.to_string_lossy().as_ref())
-        } else {
-            false
-        }
-    })
-}
 
 struct FileAnalysis {
     total_imports: usize,
@@ -135,12 +103,12 @@ fn analyze_file_imports(path: &Path) -> Result<FileAnalysis> {
     let mut used_identifiers = HashSet::new();
     
     // Extract import statements and used identifiers
-    let import_regex = Regex::new(r#"^import\s+(.+?)\s+from\s+['"](.+?)['"];?\s*$"#)?;
-    let usage_regex = Regex::new(r"\b([A-Z][a-zA-Z0-9_]*|[a-z][a-zA-Z0-9_]*)\b")?;
+    let patterns = get_common_patterns();
+    let usage_regex = regex::Regex::new(r"\b([A-Z][a-zA-Z0-9_]*|[a-z][a-zA-Z0-9_]*)\b")?;
     
     // First pass: collect imports
     for (line_num, line) in lines.iter().enumerate() {
-        if let Some(captures) = import_regex.captures(line.trim()) {
+        if let Some(captures) = patterns.import_statement.captures(line.trim()) {
             let import_spec = captures.get(1).unwrap().as_str();
             let import_path = captures.get(2).unwrap().as_str();
             
@@ -150,9 +118,9 @@ fn analyze_file_imports(path: &Path) -> Result<FileAnalysis> {
     }
     
     // Second pass: collect used identifiers (skip import lines)
-    for (line_num, line) in lines.iter().enumerate() {
+    for (_line_num, line) in lines.iter().enumerate() {
         // Skip import lines
-        if import_regex.is_match(line.trim()) {
+        if patterns.import_statement.is_match(line.trim()) {
             continue;
         }
         
@@ -196,10 +164,10 @@ struct ParsedImport {
     default_import: Option<String>,
     named_imports: Vec<String>,
     namespace_import: Option<String>,
-    module_path: String,
+    // module_path field removed as unused
 }
 
-fn parse_import_statement(import_spec: &str, module_path: &str) -> ParsedImport {
+fn parse_import_statement(import_spec: &str, _module_path: &str) -> ParsedImport {
     let spec = import_spec.trim();
     
     // Check for different import patterns
@@ -217,7 +185,6 @@ fn parse_import_statement(import_spec: &str, module_path: &str) -> ParsedImport 
             default_import: None,
             named_imports,
             namespace_import: None,
-            module_path: module_path.to_string(),
         }
     } else if spec.contains(" as ") && spec.starts_with('*') {
         // Namespace import: * as foo
@@ -229,7 +196,6 @@ fn parse_import_statement(import_spec: &str, module_path: &str) -> ParsedImport 
             default_import: None,
             named_imports: Vec::new(),
             namespace_import: Some(namespace_name),
-            module_path: module_path.to_string(),
         }
     } else if spec.contains(',') {
         // Mixed import: foo, { bar, baz }
@@ -255,7 +221,6 @@ fn parse_import_statement(import_spec: &str, module_path: &str) -> ParsedImport 
             default_import,
             named_imports,
             namespace_import: None,
-            module_path: module_path.to_string(),
         }
     } else {
         // Default import: foo
@@ -264,7 +229,6 @@ fn parse_import_statement(import_spec: &str, module_path: &str) -> ParsedImport 
             default_import: Some(spec.to_string()),
             named_imports: Vec::new(),
             namespace_import: None,
-            module_path: module_path.to_string(),
         }
     }
 }
@@ -296,20 +260,6 @@ fn find_unused_items(parsed_import: &ParsedImport, used_identifiers: &HashSet<St
     unused
 }
 
-fn is_keyword_or_builtin(identifier: &str) -> bool {
-    let keywords = vec![
-        "const", "let", "var", "function", "class", "interface", "type", "enum",
-        "if", "else", "for", "while", "do", "switch", "case", "default",
-        "return", "break", "continue", "throw", "try", "catch", "finally",
-        "import", "export", "from", "as", "async", "await", "yield",
-        "true", "false", "null", "undefined", "this", "super",
-        "console", "window", "document", "process", "require", "module",
-        "React", "Component", "useState", "useEffect", "useContext",
-        "string", "number", "boolean", "object", "any", "void", "never",
-    ];
-    
-    keywords.contains(&identifier) || identifier.len() <= 2
-}
 
 fn calculate_savings(unused_imports: &[UnusedImport]) -> String {
     let total_lines = unused_imports.len();

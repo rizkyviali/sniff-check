@@ -87,13 +87,23 @@ impl FileUtils {
                 .template("{spinner:.green} {msg}")
                 .unwrap());
             pb.set_message("Scanning files...");
-            pb.enable_steady_tick(std::time::Duration::from_millis(100));
+            pb.enable_steady_tick(std::time::Duration::from_millis(80));
             Some(pb)
         } else {
             None
         };
         
+        // Add minimum display time for spinner visibility
+        let start_time = std::time::Instant::now();
         let files = Self::find_files_with_extensions(dir, extensions);
+        
+        // Ensure spinner shows for at least 200ms for visibility
+        if let Some(_pb) = &pb {
+            let elapsed = start_time.elapsed();
+            if elapsed < std::time::Duration::from_millis(200) {
+                std::thread::sleep(std::time::Duration::from_millis(200) - elapsed);
+            }
+        }
         
         if let Some(pb) = pb {
             pb.finish_with_message(format!("Found {} files", files.len()));

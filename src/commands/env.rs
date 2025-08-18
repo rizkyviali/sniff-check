@@ -273,50 +273,109 @@ fn get_required_variables(dir: &Path) -> Result<HashSet<String>> {
     Ok(required_vars)
 }
 
-fn check_environment_variable(var_name: &str) -> EnvVariable {
-    match env::var(var_name) {
-        Ok(value) => {
-            if value.is_empty() {
-                EnvVariable {
-                    name: var_name.to_string(),
-                    status: VarStatus::Empty,
-                    source: Some("environment".to_string()),
-                    issue_type: Some(IssueType::EmptyValue),
-                    suggestion: Some("Set a non-empty value for this variable".to_string()),
-                }
-            } else if is_invalid_format(var_name, &value) {
-                EnvVariable {
-                    name: var_name.to_string(),
-                    status: VarStatus::Invalid,
-                    source: Some("environment".to_string()),
-                    issue_type: Some(IssueType::InvalidFormat),
-                    suggestion: Some(get_format_suggestion(var_name)),
-                }
-            } else if is_sensitive_exposed(var_name, &value) {
-                EnvVariable {
-                    name: var_name.to_string(),
-                    status: VarStatus::Present,
-                    source: Some("environment".to_string()),
-                    issue_type: Some(IssueType::SensitiveDataExposed),
-                    suggestion: Some("Move sensitive data to environment-specific files".to_string()),
-                }
-            } else {
-                EnvVariable {
-                    name: var_name.to_string(),
-                    status: VarStatus::Present,
-                    source: Some("environment".to_string()),
-                    issue_type: None,
-                    suggestion: None,
+fn load_env_variables() -> Result<HashMap<String, (String, String)>> {
+    let mut env_vars = HashMap::new();
+    let current_dir = env::current_dir()?;
+    
+    // Load .env files in priority order (lower priority first)
+    let env_files = vec![
+        ".env",
+        ".env.local", 
+        ".env.development",
+        ".env.production",
+    ];
+    
+    for file_name in env_files {
+        let file_path = current_dir.join(file_name);
+        if file_path.exists() {
+            if let Ok(content) = fs::read_to_string(&file_path) {
+                let var_regex = Regex::new(r"^([A-Z_][A-Z0-9_]*)=(.*)$")?;
+                
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    
+                    if let Some(captures) = var_regex.captures(line) {
+                        let var_name = captures.get(1).unwrap().as_str().to_string();
+                        let mut value = captures.get(2).unwrap().as_str().to_string();
+                        
+                        // Remove quotes if present
+                        if (value.starts_with('"') && value.ends_with('"')) ||
+                           (value.starts_with('\'') && value.ends_with('\'')) {
+                            value = value[1..value.len()-1].to_string();
+                        }
+                        
+                        env_vars.insert(var_name, (value, file_name.to_string()));
+                    }
                 }
             }
         }
-        Err(_) => EnvVariable {
+    }
+    
+    Ok(env_vars)
+}
+
+fn check_environment_variable(var_name: &str) -> EnvVariable {
+    // First check process environment (highest priority)
+    match env::var(var_name) {
+        Ok(value) => {
+            return create_env_variable(var_name, &value, "environment");
+        }
+        Err(_) => {
+            // Fall back to .env files
+            if let Ok(env_vars) = load_env_variables() {
+                if let Some((value, source)) = env_vars.get(var_name) {
+                    return create_env_variable(var_name, value, source);
+                }
+            }
+            
+            // Variable not found anywhere
+            EnvVariable {
+                name: var_name.to_string(),
+                status: VarStatus::Missing,
+                source: None,
+                issue_type: Some(IssueType::MissingRequired),
+                suggestion: Some(format!("Add {} to your .env file", var_name)),
+            }
+        }
+    }
+}
+
+fn create_env_variable(var_name: &str, value: &str, source: &str) -> EnvVariable {
+    if value.is_empty() {
+        EnvVariable {
             name: var_name.to_string(),
-            status: VarStatus::Missing,
-            source: None,
-            issue_type: Some(IssueType::MissingRequired),
-            suggestion: Some(format!("Add {} to your .env file", var_name)),
-        },
+            status: VarStatus::Empty,
+            source: Some(source.to_string()),
+            issue_type: Some(IssueType::EmptyValue),
+            suggestion: Some("Set a non-empty value for this variable".to_string()),
+        }
+    } else if is_invalid_format(var_name, value) {
+        EnvVariable {
+            name: var_name.to_string(),
+            status: VarStatus::Invalid,
+            source: Some(source.to_string()),
+            issue_type: Some(IssueType::InvalidFormat),
+            suggestion: Some(get_format_suggestion(var_name)),
+        }
+    } else if is_sensitive_exposed(var_name, value) {
+        EnvVariable {
+            name: var_name.to_string(),
+            status: VarStatus::Present,
+            source: Some(source.to_string()),
+            issue_type: Some(IssueType::SensitiveDataExposed),
+            suggestion: Some("Move sensitive data to environment-specific files".to_string()),
+        }
+    } else {
+        EnvVariable {
+            name: var_name.to_string(),
+            status: VarStatus::Present,
+            source: Some(source.to_string()),
+            issue_type: None,
+            suggestion: None,
+        }
     }
 }
 
