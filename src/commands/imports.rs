@@ -237,11 +237,21 @@ fn parse_import_statement(import_spec: &str, _module_path: &str) -> ParsedImport
     
     // Check for different import patterns
     if cleaned_spec.starts_with('{') && cleaned_spec.ends_with('}') {
-        // Named imports: { foo, bar }
+        // Named imports: { foo, bar } or { type Foo, Bar }
         let named_part = &cleaned_spec[1..cleaned_spec.len()-1];
         let named_imports: Vec<String> = named_part
             .split(',')
-            .map(|s| s.trim().split_whitespace().next().unwrap_or("").to_string())
+            .map(|s| {
+                let trimmed = s.trim();
+                // Handle inline type imports like "type NextRequest"
+                if trimmed.starts_with("type ") {
+                    // Extract the actual type name after "type "
+                    trimmed[5..].trim().to_string()
+                } else {
+                    // Handle regular imports and "as" aliases
+                    trimmed.split_whitespace().next().unwrap_or("").to_string()
+                }
+            })
             .filter(|s| !s.is_empty())
             .collect();
         
