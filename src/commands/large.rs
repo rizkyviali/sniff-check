@@ -61,7 +61,7 @@ impl std::fmt::Display for FileType {
             FileType::Test => "Test",
             FileType::Other => "Other",
         };
-        write!(f, "{}", display)
+        write!(f, "{display}")
     }
 }
 
@@ -152,7 +152,7 @@ fn scan_large_files(threshold: usize, quiet: bool) -> Result<LargeFileReport> {
     if std::env::var("SNIFF_PERF_DEBUG").is_ok() && !quiet {
         eprintln!("\n--- Performance Report ---");
         perf_monitor.print_report();
-        eprintln!("Files processed: {}", total_files);
+        eprintln!("Files processed: {total_files}");
         eprintln!("Large files found: {}", large_files.len());
     }
     

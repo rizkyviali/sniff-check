@@ -383,7 +383,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.large_files.threshold, 100);
-        assert_eq!(config.typescript.strict_any_check, true);
+        assert!(config.typescript.strict_any_check);
         assert_eq!(config.bundle.max_bundle_size_mb, 2.0);
     }
     
