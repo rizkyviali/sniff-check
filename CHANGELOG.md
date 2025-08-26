@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2025-08-26
+
+### 🚀 Production Ready Release
+
+This release focuses on stability, reliability, and production readiness with critical bug fixes and quality improvements.
+
+#### 🐛 Critical Bug Fixes
+- **Import Regex Parsing Fix** - Resolved issue where import statements with trailing comments weren't detected
+- **TypeScript Type Imports** - Fixed parsing of `import type { A, B }` statements that were being truncated
+- **Test Infrastructure** - Fixed CommandRunner to use release binary correctly, ensuring reliable CI/CD
+- **Exit Code Consistency** - Standardized exit codes across all commands for better CI/CD integration
+
+#### ⚡ Performance & Infrastructure
+- **Progress Tracking Foundation** - Added infrastructure for progress indicators on large projects (>50 files)
+- **Sequential Processing** - Large projects now use progress-tracked sequential processing
+- **Parallel Processing** - Maintained high-speed parallel processing for smaller projects
+- **JSON Output Enhancement** - Broken imports now properly included in JSON responses
+
+#### 🧹 Code Quality & Maintenance  
+- **Critical Clippy Fixes** - Resolved bool assertion warnings and format string issues
+- **Test Suite Reliability** - All tests now pass consistently, ensuring stable releases
+- **Documentation Updates** - Enhanced README and CHANGELOG for npm publication
+- **Version Consistency** - Synchronized versions across all configuration files
+
+#### 🎯 Enhanced User Experience
+- **Better Error Messages** - Improved guidance with smart suggestions for broken imports
+- **Visual Improvements** - Enhanced terminal output with better formatting and colors
+- **npm Publication Ready** - Optimized package metadata and installation instructions
+
+### Technical Improvements
+- **Smart Import Detection** - Now correctly handles comments at end of import lines
+- **Path Resolution** - Enhanced relative import path checking and validation
+- **Suggestion Engine** - Intelligent recommendations for fixing broken imports
+- **CI/CD Integration** - Improved JSON output format for automated builds
+
+### 🔧 Migration Notes
+- All existing functionality remains unchanged (100% backward compatible)
+- Enhanced import detection may find previously missed issues (this is a good thing!)
+- JSON output now includes `broken_imports` field alongside existing `unused_imports`
+- Exit codes are now consistent: 0=success, 2=validation issues found
+
 ## [0.1.6] - 2025-08-26
 
 ### 🎯 New Feature: Broken Imports Detection

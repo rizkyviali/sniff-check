@@ -1,8 +1,14 @@
 # sniff-check
 
+[![npm version](https://badge.fury.io/js/sniff-check.svg)](https://badge.fury.io/js/sniff-check)
+[![Downloads](https://img.shields.io/npm/dm/sniff-check.svg)](https://www.npmjs.com/package/sniff-check)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > Opinionated TypeScript/Next.js Development Toolkit
 
 A comprehensive, high-performance Rust CLI tool that enforces opinionated code quality standards for TypeScript/Next.js projects. Built for speed, reliability, and developer productivity with advanced performance optimizations and comprehensive testing.
+
+**🆕 NEW in v0.1.7: Production Ready!** Critical bug fixes, enhanced stability, and improved TypeScript import detection.
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizkyviali)
 
@@ -24,21 +30,24 @@ A comprehensive, high-performance Rust CLI tool that enforces opinionated code q
 - **Performance Monitoring** - Built-in timing and metrics (use `SNIFF_PERF_DEBUG=1`)
 - **Optimized Regex Engine** - Shared pattern compilation for faster analysis
 
-## 🚀 Installation
+## 🚀 Quick Start
 
-### Via npm (Recommended)
 ```bash
-# Install globally
+# Install globally via npm (Recommended)
 npm install -g sniff-check
 
-# Or use with npx (no installation required)
+# Or use without installation
 npx sniff-check
 
-# Or install locally in your project
+# Or add to your project
 npm install --save-dev sniff-check
 ```
 
-### Via Cargo (Rust)
+### Alternative Installation Methods
+
+<details>
+<summary>Via Cargo (Rust)</summary>
+
 ```bash
 # Install from crates.io
 cargo install sniff-check
@@ -48,12 +57,29 @@ git clone https://github.com/rizkyviali/sniff-check
 cd sniff-check
 cargo build --release
 ```
+</details>
 
 ### Requirements
-- Node.js 14+ (for npm installation)
-- Rust 1.70+ (for cargo installation or building from source)
+- **Node.js 16+** (for npm installation)
+- **Rust 1.70+** (only for cargo installation)
 
 ## 📖 Usage
+
+### 🎯 Most Common Commands
+
+```bash
+# 🔍 Find large files that need refactoring (>100 lines)
+sniff large
+
+# 🚫 Detect unused AND broken imports (NEW!)
+sniff imports  
+
+# 📝 Check TypeScript code quality ('any' usage, type coverage)
+sniff types
+
+# 🚀 Complete pre-deployment validation
+sniff deploy
+```
 
 ### Interactive Menu
 ```bash
@@ -359,21 +385,26 @@ Use `sniff config init` to generate a default configuration file, or `sniff conf
 
 ## 🆕 Recent Updates
 
-**v0.1.6** introduces powerful broken imports detection alongside existing unused imports analysis, perfect for refactoring workflows:
+**v0.1.7** delivers production-ready stability with critical bug fixes and quality improvements:
+
+- **🐛 Critical Bug Fixes**: Resolved import parsing issues with trailing comments and TypeScript type imports  
+- **🧪 Test Suite Reliability**: All tests now pass consistently, ensuring stable releases
+- **⚡ Performance Infrastructure**: Added progress tracking foundation for large projects
+- **📊 Enhanced JSON Output**: Broken imports properly included in CI/CD responses
+- **🎯 Better User Experience**: Improved error messages and visual feedback
+
+**v0.1.6** introduced powerful broken imports detection alongside existing unused imports analysis:
 
 - **💥 Broken Imports Detection**: Identifies imports to non-existent files and uninstalled packages
 - **💡 Smart Suggestions**: Provides intelligent fix recommendations for broken imports
 - **🎯 Refactoring Support**: Perfect for detecting issues after moving/renaming files
 - **📊 Unified Reporting**: Shows both unused and broken imports together
-- **🔧 Enhanced CI/CD**: Better error detection for automated builds
 
 **v0.1.5** introduced major performance and architecture improvements:
 
 - **⚡ Performance**: File analysis improved from ~283ms to ~1.3ms
 - **📁 Architecture**: New shared utilities eliminate 300+ lines of duplicate code
 - **📋 JSON Output**: Standardized format with timestamps and metadata
-- **🧪 Testing**: Comprehensive integration test framework
-- **🔧 Error Handling**: Unified error codes and reporting
 
 See [CHANGELOG.md](./CHANGELOG.md) for complete release notes and version history.
 
