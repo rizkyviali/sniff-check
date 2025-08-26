@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::common::{FileScanner, get_common_patterns, is_keyword_or_builtin, ExitCode, check_failure_threshold};
+use crate::common::{FileScanner, get_common_patterns, is_keyword_or_builtin, ExitCode, check_failure_threshold, progress::FileProgressTracker};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportsReport {
@@ -62,7 +62,7 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
         println!("{}", "🔍 Scanning for unused and broken imports...".bold().blue());
     }
     
-    let report = analyze_imports()?;
+    let report = analyze_imports(quiet)?;
     
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -79,18 +79,40 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
     Ok(())
 }
 
-fn analyze_imports() -> Result<ImportsReport> {
+fn analyze_imports(quiet: bool) -> Result<ImportsReport> {
     let current_dir = std::env::current_dir()?;
     let scanner = FileScanner::with_defaults();
     let files = scanner.find_js_ts_files(&current_dir);
     
-    
     let files_count = files.len();
     
-    let file_analyses: Vec<FileAnalysis> = files
-        .par_iter()
-        .map(|path| analyze_file_imports(path, &current_dir))
-        .collect::<Result<Vec<_>, _>>()?;
+    // Show progress for larger projects (>50 files)
+    let progress = if files_count > 50 {
+        FileProgressTracker::new(
+            "Analyzing imports", 
+            Some(files_count), 
+            quiet
+        )
+    } else {
+        FileProgressTracker::new("Analyzing imports", None, true) // No progress for small projects
+    };
+    
+    let file_analyses: Vec<FileAnalysis> = if files_count > 50 {
+        // Sequential processing with progress for large projects
+        let mut analyses = Vec::with_capacity(files_count);
+        for (i, path) in files.iter().enumerate() {
+            progress.set_position(i as u64);
+            analyses.push(analyze_file_imports(path, &current_dir)?);
+        }
+        progress.finish_with_message(&format!("Analyzed {} files", files_count));
+        analyses
+    } else {
+        // Parallel processing for smaller projects (no progress needed)
+        files
+            .par_iter()
+            .map(|path| analyze_file_imports(path, &current_dir))
+            .collect::<Result<Vec<_>, _>>()?
+    };
     
     let mut unused_imports = Vec::new();
     let mut broken_imports = Vec::new();
