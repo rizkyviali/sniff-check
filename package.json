@@ -1,6 +1,6 @@
 {
   "name": "sniff-check",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Opinionated TypeScript/Next.js Development Toolkit",
   "main": "index.js",
   "bin": {
@@ -19,7 +19,10 @@
     "linting",
     "performance",
     "memory-leak",
-    "bundle-analysis"
+    "bundle-analysis",
+    "imports",
+    "refactoring",
+    "broken-imports"
   ],
   "author": "Rizky Viali",
   "license": "MIT",

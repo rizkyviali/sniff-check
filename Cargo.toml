@@ -1,6 +1,6 @@
 [package]
 name = "sniff-check"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "Opinionated TypeScript/Next.js Development Toolkit"
 license = "MIT"
