@@ -415,12 +415,17 @@ impl CommandRunner {
         let project_root = project_root
             .ok_or_else(|| anyhow::anyhow!("Could not find sniff-check project root with Cargo.toml"))?;
         
-        let output = std::process::Command::new("cargo")
+        // First build the binary if needed
+        std::process::Command::new("cargo")
             .current_dir(&project_root)
-            .env("CARGO_TARGET_DIR", project_root.join("target"))
-            .args(&["run", "--"])
-            .args(args)
+            .args(&["build", "--release"])
+            .output()?;
+            
+        // Run the binary directly from the working directory
+        let binary_path = project_root.join("target/release/sniff");
+        let output = std::process::Command::new(&binary_path)
             .current_dir(&working_dir)
+            .args(args)
             .output()?;
         Ok(output)
     }

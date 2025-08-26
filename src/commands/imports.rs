@@ -83,6 +83,8 @@ fn analyze_imports() -> Result<ImportsReport> {
     let current_dir = std::env::current_dir()?;
     let scanner = FileScanner::with_defaults();
     let files = scanner.find_js_ts_files(&current_dir);
+    
+    
     let files_count = files.len();
     
     let file_analyses: Vec<FileAnalysis> = files

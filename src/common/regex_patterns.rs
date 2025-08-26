@@ -28,7 +28,7 @@ impl CommonPatterns {
             function_def: Regex::new(r"(?:function\s+\w+|const\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>|(?:async\s+)?function\s*\([^)]*\))\s*\{")?,
             ts_ignore: Regex::new(r"@ts-ignore")?,
             ts_expect_error: Regex::new(r"@ts-expect-error")?,
-            import_statement: Regex::new(r#"^import\s+(.+?)\s+from\s+['"](.+?)['"];?\s*$"#)?,
+            import_statement: Regex::new(r#"^import\s+(.+?)\s+from\s+['"](.+?)['"];?\s*(?://.*)?$"#)?,
             named_import: Regex::new(r"import\s*\{\s*([^}]+)\s*\}")?,
             default_import: Regex::new(r"import\s+(\w+)\s+from")?,
             event_listener: Regex::new(r"addEventListener\([^)]+\)")?,
