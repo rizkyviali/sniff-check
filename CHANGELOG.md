@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.7] - 2025-08-26
 
-### 🚀 Production Ready Release
-
-This release focuses on stability, reliability, and production readiness with critical bug fixes and quality improvements.
-
 #### 🐛 Critical Bug Fixes
 - **Import Regex Parsing Fix** - Resolved issue where import statements with trailing comments weren't detected
 - **TypeScript Type Imports** - Fixed parsing of `import type { A, B }` statements that were being truncated
