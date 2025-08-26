@@ -12,10 +12,9 @@ pub mod performance;
 
 pub use file_scanner::{FileScanner};
 pub use regex_patterns::{get_common_patterns, is_in_string_literal_or_comment, is_keyword_or_builtin};
-pub use report_formatter::{Severity, Status};
+pub use report_formatter::Severity;
 pub use error_handler::{ExitCode, check_failure_threshold};
-pub use cli_args::{OutputOptions, ThresholdOptions, FileFilterOptions, ValidationOptions};
-pub use output_utils::{handle_command_output, print_status, init_command, complete_command};
-pub use json_output::{StandardResponse, ResponseSummary, AnalysisStatus, create_standard_json_output, output_result};
-pub use performance::{OptimizedFileWalker, CachedFileReader, count_lines_optimized, PerformanceMonitor};
+pub use output_utils::{init_command, complete_command};
+pub use json_output::{create_standard_json_output, output_result};
+pub use performance::{OptimizedFileWalker, count_lines_optimized, PerformanceMonitor};
 // progress module exports removed as unused

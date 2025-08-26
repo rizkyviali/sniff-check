@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
 use crate::utils::FileUtils;
+use crate::common::OptimizedFileWalker;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContextReport {
@@ -620,16 +621,225 @@ fn extract_child_components(content: &str) -> Vec<String> {
     components
 }
 
-async fn analyze_pages(_project_dir: &Path) -> Result<Vec<PageInfo>> {
-    Ok(Vec::new()) // TODO: Implement page analysis
+async fn analyze_pages(project_dir: &Path) -> Result<Vec<PageInfo>> {
+    let mut pages = Vec::new();
+    
+    // Common page directories for different frameworks
+    let page_dirs = [
+        "pages",           // Next.js pages directory
+        "app",             // Next.js app directory
+        "src/pages",       // Next.js with src
+        "src/app",         // Next.js app with src
+        "src/routes",      // SvelteKit routes
+        "routes",          // SvelteKit routes
+    ];
+    
+    for dir_name in &page_dirs {
+        let dir_path = project_dir.join(dir_name);
+        if dir_path.exists() && dir_path.is_dir() {
+            let walker = OptimizedFileWalker::new()
+                .parallel_threshold(10);
+            
+            let files = walker.walk(&dir_path)
+                .into_iter()
+                .filter(|path| {
+                    if let Some(ext) = path.extension() {
+                        matches!(ext.to_str(), Some("ts") | Some("tsx") | Some("js") | Some("jsx"))
+                    } else {
+                        false
+                    }
+                })
+                .collect::<Vec<_>>();
+            
+            for file_path in files {
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    let relative_path = file_path.strip_prefix(project_dir)
+                        .unwrap_or(&file_path)
+                        .to_string_lossy()
+                        .to_string();
+                    
+                    let _line_count = content.lines().count();
+                    let _is_dynamic = relative_path.contains('[') && relative_path.contains(']');
+                    let has_getstaticprops = content.contains("getStaticProps");
+                    let has_getserversideprops = content.contains("getServerSideProps");
+                    
+                    let name = file_path.file_stem()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let route = relative_path.replace(".tsx", "").replace(".ts", "").replace(".jsx", "").replace(".js", "");
+                    
+                    pages.push(PageInfo {
+                        name,
+                        path: relative_path,
+                        route,
+                        has_ssr: has_getserversideprops,
+                        has_ssg: has_getstaticprops,
+                        api_calls: Vec::new(), // Could be enhanced to detect API calls
+                    });
+                }
+            }
+        }
+    }
+    
+    Ok(pages)
 }
 
-async fn analyze_api_routes(_project_dir: &Path) -> Result<Vec<ApiRouteInfo>> {
-    Ok(Vec::new()) // TODO: Implement API route analysis
+async fn analyze_api_routes(project_dir: &Path) -> Result<Vec<ApiRouteInfo>> {
+    let mut api_routes = Vec::new();
+    
+    // Common API directories
+    let api_dirs = [
+        "pages/api",
+        "src/pages/api", 
+        "app/api",
+        "src/app/api",
+        "api",
+        "src/api",
+    ];
+    
+    for dir_name in &api_dirs {
+        let dir_path = project_dir.join(dir_name);
+        if dir_path.exists() && dir_path.is_dir() {
+            let walker = OptimizedFileWalker::new()
+                .parallel_threshold(10);
+            
+            let files = walker.walk(&dir_path)
+                .into_iter()
+                .filter(|path| {
+                    if let Some(ext) = path.extension() {
+                        matches!(ext.to_str(), Some("ts") | Some("tsx") | Some("js") | Some("jsx"))
+                    } else {
+                        false
+                    }
+                })
+                .collect::<Vec<_>>();
+            
+            for file_path in files {
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    let relative_path = file_path.strip_prefix(project_dir)
+                        .unwrap_or(&file_path)
+                        .to_string_lossy()
+                        .to_string();
+                    
+                    let _line_count = content.lines().count();
+                    
+                    // Detect HTTP methods
+                    let mut methods = Vec::new();
+                    if content.contains("req.method === 'GET'") || content.contains("method: 'GET'") {
+                        methods.push("GET".to_string());
+                    }
+                    if content.contains("req.method === 'POST'") || content.contains("method: 'POST'") {
+                        methods.push("POST".to_string());
+                    }
+                    if content.contains("req.method === 'PUT'") || content.contains("method: 'PUT'") {
+                        methods.push("PUT".to_string());
+                    }
+                    if content.contains("req.method === 'DELETE'") || content.contains("method: 'DELETE'") {
+                        methods.push("DELETE".to_string());
+                    }
+                    
+                    let has_middleware = content.contains("middleware") || content.contains("cors") || content.contains("auth");
+                    let has_validation = content.contains("validate") || content.contains("schema") || content.contains("joi") || content.contains("yup");
+                    
+                    api_routes.push(ApiRouteInfo {
+                        path: relative_path,
+                        methods: if methods.is_empty() { vec!["GET".to_string()] } else { methods },
+                        middleware: if has_middleware { vec!["middleware".to_string()] } else { Vec::new() },
+                        database_operations: if has_validation { vec!["validation".to_string()] } else { Vec::new() },
+                    });
+                }
+            }
+        }
+    }
+    
+    Ok(api_routes)
 }
 
-async fn analyze_utilities(_project_dir: &Path) -> Result<Vec<UtilityInfo>> {
-    Ok(Vec::new()) // TODO: Implement utility analysis
+async fn analyze_utilities(project_dir: &Path) -> Result<Vec<UtilityInfo>> {
+    let mut utilities = Vec::new();
+    
+    // Common utility directories
+    let util_dirs = [
+        "utils",
+        "src/utils",
+        "lib", 
+        "src/lib",
+        "helpers",
+        "src/helpers",
+        "common",
+        "src/common",
+    ];
+    
+    for dir_name in &util_dirs {
+        let dir_path = project_dir.join(dir_name);
+        if dir_path.exists() && dir_path.is_dir() {
+            let walker = OptimizedFileWalker::new()
+                .parallel_threshold(10);
+            
+            let files = walker.walk(&dir_path)
+                .into_iter()
+                .filter(|path| {
+                    if let Some(ext) = path.extension() {
+                        matches!(ext.to_str(), Some("ts") | Some("tsx") | Some("js") | Some("jsx"))
+                    } else {
+                        false
+                    }
+                })
+                .collect::<Vec<_>>();
+            
+            for file_path in files {
+                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                    let relative_path = file_path.strip_prefix(project_dir)
+                        .unwrap_or(&file_path)
+                        .to_string_lossy()
+                        .to_string();
+                    
+                    let _line_count = content.lines().count();
+                    
+                    // Determine utility type based on content patterns
+                    let utility_type = if content.contains("fetch") || content.contains("axios") || content.contains("http") {
+                        "api".to_string()
+                    } else if content.contains("format") || content.contains("parse") || content.contains("Date") {
+                        "formatting".to_string()
+                    } else if content.contains("validate") || content.contains("regex") || content.contains("test") {
+                        "validation".to_string()
+                    } else if content.contains("typeof") || content.contains("Array.isArray") {
+                        "type-checking".to_string()
+                    } else if content.contains("localStorage") || content.contains("sessionStorage") {
+                        "storage".to_string()
+                    } else {
+                        "general".to_string()
+                    };
+                    
+                    // Count exports
+                    let export_count = content.matches("export ").count() + 
+                                     content.matches("export{").count() +
+                                     content.matches("export {").count();
+                    
+                    let _has_tests = project_dir.join(format!("{}.test.ts", file_path.file_stem().unwrap().to_string_lossy())).exists() ||
+                                  project_dir.join(format!("{}.spec.ts", file_path.file_stem().unwrap().to_string_lossy())).exists();
+                    
+                    let purpose = match utility_type.as_str() {
+                        "api" => UtilityPurpose::DataFetching,
+                        "formatting" => UtilityPurpose::Formatting,
+                        "validation" => UtilityPurpose::Validation,
+                        "type-checking" => UtilityPurpose::Types,
+                        "storage" => UtilityPurpose::Helpers,
+                        _ => UtilityPurpose::Other,
+                    };
+                    
+                    utilities.push(UtilityInfo {
+                        path: relative_path,
+                        functions: vec![format!("exports: {}", export_count)],
+                        purpose,
+                        complexity: _line_count.min(100), // Cap complexity at 100
+                    });
+                }
+            }
+        }
+    }
+    
+    Ok(utilities)
 }
 
 async fn analyze_dependencies(project_dir: &Path) -> Result<DependencyAnalysis> {
@@ -1022,13 +1232,226 @@ fn generate_recommendations(structure: &ProjectStructure, dependencies: &Depende
     recommendations
 }
 
-async fn analyze_file_relationships(_project_dir: &Path) -> Result<FileRelationships> {
+async fn analyze_file_relationships(project_dir: &Path) -> Result<FileRelationships> {
+    let mut import_graph: HashMap<String, Vec<String>> = HashMap::new();
+    let mut component_hierarchy: HashMap<String, Vec<String>> = HashMap::new();
+    let mut import_counts: HashMap<String, usize> = HashMap::new();
+    
+    // Find all TypeScript/JavaScript files
+    let walker = OptimizedFileWalker::new()
+        .parallel_threshold(20);
+    let files = walker.walk(project_dir)
+        .into_iter()
+        .filter(|path| {
+            if let Some(ext) = path.extension() {
+                matches!(ext.to_str(), Some("ts") | Some("tsx") | Some("js") | Some("jsx"))
+            } else {
+                false
+            }
+        })
+        .collect::<Vec<_>>();
+    
+    // Parse imports from each file
+    for file_path in &files {
+        if let Ok(content) = std::fs::read_to_string(file_path) {
+            let relative_path = file_path.strip_prefix(project_dir)
+                .unwrap_or(file_path)
+                .to_string_lossy()
+                .to_string();
+            
+            let imports = extract_imports(&content);
+            import_graph.insert(relative_path.clone(), imports.clone());
+            
+            // Count imports for popularity analysis
+            for import in imports {
+                *import_counts.entry(import).or_insert(0) += 1;
+            }
+            
+            // Analyze component hierarchy for React components
+            if file_path.extension().map_or(false, |ext| ext == "tsx" || ext == "jsx") {
+                let children = extract_jsx_children(&content);
+                if !children.is_empty() {
+                    component_hierarchy.insert(relative_path, children);
+                }
+            }
+        }
+    }
+    
+    // Find most imported files (top 10)
+    let mut most_imported: Vec<(String, usize)> = import_counts.into_iter().collect();
+    most_imported.sort_by(|a, b| b.1.cmp(&a.1));
+    most_imported.truncate(10);
+    // Keep as Vec<(String, usize)> for the struct
+    // Don't convert to strings here
+    
+    // Basic circular dependency detection (simplified)
+    let circular_dependencies = detect_circular_dependencies(&import_graph)
+        .into_iter()
+        .map(|file| vec![file]) // Convert single files to cycles
+        .collect();
+    
     Ok(FileRelationships {
-        import_graph: HashMap::new(),
-        component_hierarchy: HashMap::new(),
-        most_imported: Vec::new(),
-        circular_dependencies: Vec::new(),
-    }) // TODO: Implement relationship analysis
+        import_graph,
+        component_hierarchy,
+        most_imported: most_imported.into_iter().take(10).collect(),
+        circular_dependencies,
+    })
+}
+
+fn extract_imports(content: &str) -> Vec<String> {
+    let mut imports = Vec::new();
+    
+    for line in content.lines() {
+        let line = line.trim();
+        
+        // Match import statements
+        if line.starts_with("import ") && line.contains(" from ") {
+            if let Some(from_pos) = line.rfind(" from ") {
+                let import_path = &line[from_pos + 6..];
+                let import_path = import_path.trim()
+                    .trim_matches('\'')
+                    .trim_matches('"')
+                    .trim_matches(';');
+                
+                // Only include relative imports
+                if import_path.starts_with('.') {
+                    imports.push(import_path.to_string());
+                }
+            }
+        }
+        
+        // Match require statements
+        if line.contains("require(") {
+            if let Some(start) = line.find("require(") {
+                let after_require = &line[start + 8..];
+                if let Some(end) = after_require.find(')') {
+                    let import_path = &after_require[..end]
+                        .trim()
+                        .trim_matches('\'')
+                        .trim_matches('"');
+                    
+                    if import_path.starts_with('.') {
+                        imports.push(import_path.to_string());
+                    }
+                }
+            }
+        }
+    }
+    
+    imports
+}
+
+fn extract_jsx_children(content: &str) -> Vec<String> {
+    let mut children = Vec::new();
+    
+    // Simple regex-like pattern matching for JSX components
+    for line in content.lines() {
+        // Look for JSX component usage like <ComponentName>
+        if line.contains('<') && line.contains('>') {
+            let line = line.trim();
+            let mut chars = line.chars().peekable();
+            
+            while let Some(ch) = chars.next() {
+                if ch == '<' {
+                    if chars.peek() == Some(&'/') {
+                        continue; // Skip closing tags
+                    }
+                    
+                    let mut component_name = String::new();
+                    while let Some(&next_ch) = chars.peek() {
+                        if next_ch.is_alphanumeric() || next_ch == '_' {
+                            component_name.push(chars.next().unwrap());
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // Only include components that start with uppercase (React convention)
+                    if !component_name.is_empty() && component_name.chars().next().unwrap().is_uppercase() {
+                        children.push(component_name);
+                    }
+                }
+            }
+        }
+    }
+    
+    children.sort();
+    children.dedup();
+    children
+}
+
+fn detect_circular_dependencies(import_graph: &HashMap<String, Vec<String>>) -> Vec<String> {
+    let mut circular_deps = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    let mut rec_stack = std::collections::HashSet::new();
+    
+    for file in import_graph.keys() {
+        if !visited.contains(file) {
+            if has_cycle(file, import_graph, &mut visited, &mut rec_stack, &mut Vec::new()) {
+                // Found a cycle involving this file
+                circular_deps.push(file.clone());
+            }
+        }
+    }
+    
+    circular_deps
+}
+
+fn has_cycle(
+    file: &str,
+    graph: &HashMap<String, Vec<String>>,
+    visited: &mut std::collections::HashSet<String>,
+    rec_stack: &mut std::collections::HashSet<String>,
+    _path: &mut Vec<String>,
+) -> bool {
+    visited.insert(file.to_string());
+    rec_stack.insert(file.to_string());
+    
+    if let Some(imports) = graph.get(file) {
+        for import in imports {
+            // Resolve relative import to absolute path (simplified)
+            let resolved_import = resolve_import_path(file, import);
+            
+            if !visited.contains(&resolved_import) {
+                if has_cycle(&resolved_import, graph, visited, rec_stack, _path) {
+                    return true;
+                }
+            } else if rec_stack.contains(&resolved_import) {
+                return true; // Found cycle
+            }
+        }
+    }
+    
+    rec_stack.remove(file);
+    false
+}
+
+fn resolve_import_path(current_file: &str, import_path: &str) -> String {
+    // Simplified import resolution
+    if import_path.starts_with("./") {
+        // Same directory
+        let dir = std::path::Path::new(current_file).parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        format!("{}/{}", dir, &import_path[2..])
+    } else if import_path.starts_with("../") {
+        // Parent directory - simplified resolution
+        let mut parts: Vec<&str> = current_file.split('/').collect();
+        parts.pop(); // Remove filename
+        
+        let mut import_parts: Vec<&str> = import_path.split('/').collect();
+        while import_parts.first() == Some(&"..") {
+            import_parts.remove(0);
+            if !parts.is_empty() {
+                parts.pop();
+            }
+        }
+        
+        parts.extend(import_parts);
+        parts.join("/")
+    } else {
+        import_path.to_string()
+    }
 }
 
 

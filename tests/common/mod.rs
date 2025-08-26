@@ -1,7 +1,7 @@
 /// Shared test utilities for all test modules
 use std::fs;
 use std::path::{Path, PathBuf};
-use tempfile::{TempDir, NamedTempFile};
+use tempfile::TempDir;
 use anyhow::Result;
 
 /// Test fixture for creating temporary file structures
@@ -370,12 +370,50 @@ pub struct CommandRunner;
 impl CommandRunner {
     /// Run a sniff command with arguments from a specific directory
     pub fn run_sniff_command_in_dir<P: AsRef<std::path::Path>>(working_dir: P, args: &[&str]) -> Result<std::process::Output> {
-        // Get the current project root (where Cargo.toml is)
-        let project_root = std::env::current_dir()?
-            .ancestors()
-            .find(|p| p.join("Cargo.toml").exists())
-            .ok_or_else(|| anyhow::anyhow!("Could not find project root"))?
-            .to_path_buf();
+        // Find project root that contains Cargo.toml
+        // We need to find the sniff-check project root, not the temporary test directory
+        
+        // First, try to get the original cargo manifest directory from env
+        let mut project_root = None;
+        
+        // Look from the test executable location (this should be in target/debug/deps)
+        if let Ok(exe_path) = std::env::current_exe() {
+            for ancestor in exe_path.ancestors() {
+                if ancestor.join("Cargo.toml").exists() && 
+                   ancestor.file_name().map(|n| n.to_string_lossy()) == Some("sniff-check".into()) {
+                    project_root = Some(ancestor.to_path_buf());
+                    break;
+                }
+            }
+        }
+        
+        // Fallback: look upwards from current directory
+        if project_root.is_none() {
+            let start_search = std::env::current_dir()?;
+            for ancestor in start_search.ancestors() {
+                if ancestor.join("Cargo.toml").exists() {
+                    // Check if this is the sniff-check project by looking for our specific files
+                    if ancestor.join("src").join("main.rs").exists() && 
+                       ancestor.join("src").join("commands").exists() {
+                        project_root = Some(ancestor.to_path_buf());
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Final fallback: use CARGO_MANIFEST_DIR if set
+        if project_root.is_none() {
+            if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+                let manifest_path = std::path::PathBuf::from(manifest_dir);
+                if manifest_path.join("Cargo.toml").exists() {
+                    project_root = Some(manifest_path);
+                }
+            }
+        }
+        
+        let project_root = project_root
+            .ok_or_else(|| anyhow::anyhow!("Could not find sniff-check project root with Cargo.toml"))?;
         
         let output = std::process::Command::new("cargo")
             .current_dir(&project_root)
