@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2025-08-26
+
+### 🎯 New Feature: Broken Imports Detection
+
+#### Added
+- **💥 Broken Imports Detection** - Enhanced `sniff imports` command now detects broken and invalid imports
+- **🔍 File Not Found Detection** - Identifies imports referencing non-existent files (perfect for refactoring scenarios)
+- **📦 Module Installation Check** - Detects imports from uninstalled npm packages
+- **💡 Smart Suggestions** - Provides intelligent fix suggestions for broken imports
+- **🎯 Refactoring Support** - Perfect for detecting issues after moving/renaming files
+
+#### Enhanced Features
+- **🔧 Comprehensive Import Analysis** - Single command now checks both unused AND broken imports
+- **📊 Unified Reporting** - Shows unused and broken imports together with clear error messages
+- **🎨 Improved Visual Feedback** - Better colors and icons to distinguish between different issue types
+- **📈 Enhanced Summary** - Updated summary includes both unused and broken import counts
+
+#### Perfect for Refactoring Workflows
+- **File Moves/Renames** - Instantly identifies all imports that need updating after file changes
+- **Package Management** - Quickly spot missing dependencies that need installation
+- **Code Cleanup** - Remove unused imports and fix broken ones in one go
+- **Development Workflow** - Catch import issues before they cause compilation errors
+
+### Technical Improvements
+- **⚡ Intelligent Path Resolution** - Handles relative imports with proper directory traversal
+- **🧠 Smart Package Detection** - Correctly identifies scoped packages (@types/node, @scope/package)
+- **📁 Extension Handling** - Tries common JavaScript/TypeScript file extensions automatically
+- **🔍 Similar File Suggestions** - When files aren't found, suggests similar files in nearby directories
+
+### Usage Examples
+```bash
+# Detect both unused and broken imports
+sniff imports
+
+# JSON output for CI/CD integration
+sniff imports --json
+
+# Example output shows:
+# 💥 File not found: ./old-component
+# 💡 Suggestion: ./components/new-component
+# 💥 Module not installed: lodash
+# 💡 Run: npm install lodash
+```
+
 ## [0.1.5] - 2025-08-18
 
 ### 🚀 Major Performance & Architecture Improvements
