@@ -13,7 +13,7 @@ use config::ConfigUtils;
 #[derive(Parser)]
 #[command(name = "sniff")]
 #[command(about = "Opinionated TypeScript/Next.js Development Toolkit")]
-#[command(version = "0.1.5")]
+#[command(version = "0.1.6")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -39,7 +39,7 @@ enum Commands {
     },
     #[command(about = "Check TypeScript type coverage and quality")]
     Types,
-    #[command(about = "Detect unused imports")]
+    #[command(about = "Detect unused and broken imports")]
     Imports,
     #[command(about = "Analyze bundle size and optimization")]
     Bundle,
