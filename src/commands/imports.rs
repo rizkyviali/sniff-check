@@ -204,10 +204,17 @@ struct ParsedImport {
 fn parse_import_statement(import_spec: &str, _module_path: &str) -> ParsedImport {
     let spec = import_spec.trim();
     
+    // Handle TypeScript 'type' imports by removing the 'type' keyword
+    let cleaned_spec = if spec.starts_with("type ") {
+        spec[5..].trim()
+    } else {
+        spec
+    };
+    
     // Check for different import patterns
-    if spec.starts_with('{') && spec.ends_with('}') {
+    if cleaned_spec.starts_with('{') && cleaned_spec.ends_with('}') {
         // Named imports: { foo, bar }
-        let named_part = &spec[1..spec.len()-1];
+        let named_part = &cleaned_spec[1..cleaned_spec.len()-1];
         let named_imports: Vec<String> = named_part
             .split(',')
             .map(|s| s.trim().split_whitespace().next().unwrap_or("").to_string())
@@ -220,9 +227,9 @@ fn parse_import_statement(import_spec: &str, _module_path: &str) -> ParsedImport
             named_imports,
             namespace_import: None,
         }
-    } else if spec.contains(" as ") && spec.starts_with('*') {
+    } else if cleaned_spec.contains(" as ") && cleaned_spec.starts_with('*') {
         // Namespace import: * as foo
-        let parts: Vec<&str> = spec.split(" as ").collect();
+        let parts: Vec<&str> = cleaned_spec.split(" as ").collect();
         let namespace_name = parts.get(1).unwrap_or(&"").trim().to_string();
         
         ParsedImport {
@@ -231,9 +238,9 @@ fn parse_import_statement(import_spec: &str, _module_path: &str) -> ParsedImport
             named_imports: Vec::new(),
             namespace_import: Some(namespace_name),
         }
-    } else if spec.contains(',') {
+    } else if cleaned_spec.contains(',') {
         // Mixed import: foo, { bar, baz }
-        let parts: Vec<&str> = spec.split(',').collect();
+        let parts: Vec<&str> = cleaned_spec.split(',').collect();
         let default_import = Some(parts[0].trim().to_string());
         
         let mut named_imports = Vec::new();
@@ -260,7 +267,7 @@ fn parse_import_statement(import_spec: &str, _module_path: &str) -> ParsedImport
         // Default import: foo
         ParsedImport {
             import_type: ImportType::DefaultImport,
-            default_import: Some(spec.to_string()),
+            default_import: Some(cleaned_spec.to_string()),
             named_imports: Vec::new(),
             namespace_import: None,
         }
