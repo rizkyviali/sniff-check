@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2025-08-26
+
+### ✨ Enhanced User Experience: Progress Feedback
+
+#### 🔄 New Progress Feedback System
+- **Real-time Progress Updates** - All sniff commands now provide clear, informative progress messages
+- **Step-by-step Feedback** - Users see exactly what the tool is doing during analysis
+- **Completion Indicators** - Clear confirmation when each analysis phase completes
+- **Visual Improvements** - Emoji indicators and colored output for better readability
+
+#### 📊 Command-Specific Progress Enhancements
+- **large**: File scanning and analysis progress with file counts
+- **deploy**: 5-step deployment pipeline with completion indicators (1/5, 2/5, etc.)
+- **types**: TypeScript analysis progress with completion confirmation
+- **memory**: Memory leak scanning with detailed progress steps  
+- **env**: Environment validation progress for files and variables
+- **context**: Comprehensive project analysis progress tracking
+- **bundle**: Bundle analysis with build scanning progress
+
+#### 🎯 User Experience Benefits
+- **Transparency**: Users know the tool is working, not frozen
+- **Confidence**: Clear feedback builds trust in long-running operations
+- **Professional Feel**: Polished progress messages improve perceived quality
+- **Debugging**: Progress messages help identify slow operations
+
+#### 🔧 Technical Implementation
+- Text-based progress approach avoids complex progress bar type issues
+- Respects `--quiet` flag to suppress output when needed
+- Cleaned up unused progress bar imports across all command files
+- Maintains backward compatibility with all existing functionality
+
+### Impact
+This release significantly improves the developer experience by providing clear feedback during potentially long-running analysis operations. Users now see exactly what the tool is doing and when each step completes.
+
 ## [0.1.9] - 2025-08-26
 
 ### 🚀 MAJOR: Comprehensive Unused Import Detection Fix
