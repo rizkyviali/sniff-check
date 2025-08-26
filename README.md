@@ -91,13 +91,16 @@ Comprehensive TypeScript analysis:
 - Identifies @ts-ignore/@ts-expect-error comments
 - Calculates type coverage score (0-100%)
 
-#### 🚫 Unused Imports Detection
+#### 🚫 Unused & Broken Imports Detection
 ```bash
 sniff imports
 ```
 
-Smart analysis of import statements:
-- Detects unused default, named, and namespace imports
+Comprehensive analysis of import statements:
+- **Unused Imports**: Detects unused default, named, and namespace imports
+- **Broken Imports**: Identifies imports referencing non-existent files or uninstalled packages
+- **Smart Suggestions**: Provides fix suggestions for broken imports (perfect for refactoring)
+- **Refactoring Support**: Instantly spots issues after moving/renaming files
 - Handles complex usage patterns (JSX components, type annotations)
 - Shows potential bundle size savings
 - Supports ES6, CommonJS, and dynamic imports
@@ -356,7 +359,15 @@ Use `sniff config init` to generate a default configuration file, or `sniff conf
 
 ## 🆕 Recent Updates
 
-**v0.1.5** introduces major performance and architecture improvements with optimized file processing, unified JSON output, and comprehensive test framework. Key improvements:
+**v0.1.6** introduces powerful broken imports detection alongside existing unused imports analysis, perfect for refactoring workflows:
+
+- **💥 Broken Imports Detection**: Identifies imports to non-existent files and uninstalled packages
+- **💡 Smart Suggestions**: Provides intelligent fix recommendations for broken imports
+- **🎯 Refactoring Support**: Perfect for detecting issues after moving/renaming files
+- **📊 Unified Reporting**: Shows both unused and broken imports together
+- **🔧 Enhanced CI/CD**: Better error detection for automated builds
+
+**v0.1.5** introduced major performance and architecture improvements:
 
 - **⚡ Performance**: File analysis improved from ~283ms to ~1.3ms
 - **📁 Architecture**: New shared utilities eliminate 300+ lines of duplicate code
@@ -396,6 +407,42 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete release notes and version histor
   Warnings: 4
 
 💡 TIP: Files over 100 lines are considered 'smelly code' and should be refactored
+```
+
+### Imports Analysis Report
+```
+🔍 Scanning for unused and broken imports...
+
+📊 Imports Analysis Report
+==========================
+
+src/components/UserProfile.tsx
+  Line 12: import React from 'react';
+    🚫 Unused: React
+
+  Line 15: import { validateEmail } from '../utils/validation';
+    🚫 Unused: validateEmail
+
+  Line 18: import OldComponent from './old-component';
+    💥 File not found: ./old-component
+    💡 Suggestion: ./components/UserComponent
+
+  Line 22: import lodash from 'lodash';
+    💥 Module not installed: lodash
+    💡 Run: npm install lodash
+
+📈 SUMMARY
+─────────
+  Files scanned: 156
+  Total imports: 284
+  Unused imports: 12
+  Broken imports: 8
+  Potential savings: ~12 lines of code
+
+💡 TIP: Remove unused imports to reduce bundle size and improve build performance
+🔧 Consider using an IDE extension or linter to automatically remove unused imports
+🔧 Fix broken imports to resolve compilation errors
+💡 Check if files were moved/renamed, or if packages need to be installed
 ```
 
 ### TypeScript Quality Report
