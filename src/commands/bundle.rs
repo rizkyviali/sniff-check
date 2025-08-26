@@ -46,7 +46,7 @@ pub async fn run(_json: bool, quiet: bool) -> Result<()> {
         println!("{}", "🔍 Analyzing bundle size...".bold().blue());
     }
     
-    let report = analyze_bundle().await?;
+    let report = analyze_bundle(quiet).await?;
     
     if _json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -62,14 +62,22 @@ pub async fn run(_json: bool, quiet: bool) -> Result<()> {
     Ok(())
 }
 
-async fn analyze_bundle() -> Result<BundleReport> {
+async fn analyze_bundle(quiet: bool) -> Result<BundleReport> {
     // Check if this is a Next.js project
     let current_dir = std::env::current_dir()?;
+    
+    if !quiet {
+        println!("🔍 Searching for build output directories...");
+        println!("📂 Scanning for build files...");
+    }
     
     // Look for Next.js build output
     let next_build_dir = current_dir.join(".next");
     if next_build_dir.exists() {
-        analyze_nextjs_bundle(&next_build_dir).await
+        if !quiet {
+            println!("📁 Found Next.js build output in .next/");
+        }
+        analyze_nextjs_bundle(&next_build_dir, quiet).await
     } else {
         // Look for other common build outputs
         let potential_dirs = vec!["dist", "build", "out"];
@@ -77,7 +85,10 @@ async fn analyze_bundle() -> Result<BundleReport> {
         for dir_name in potential_dirs {
             let build_dir = current_dir.join(dir_name);
             if build_dir.exists() {
-                return analyze_generic_bundle(&build_dir).await;
+                if !quiet {
+                    println!("📁 Found build output in {}/", dir_name);
+                }
+                return analyze_generic_bundle(&build_dir, quiet).await;
             }
         }
         
@@ -85,20 +96,31 @@ async fn analyze_bundle() -> Result<BundleReport> {
     }
 }
 
-async fn analyze_nextjs_bundle(next_dir: &Path) -> Result<BundleReport> {
+async fn analyze_nextjs_bundle(next_dir: &Path, quiet: bool) -> Result<BundleReport> {
     let mut chunks = Vec::new();
     let mut total_size = 0u64;
     let mut total_compressed = 0u64;
     
+    if !quiet {
+        println!("📊 Analyzing Next.js bundle structure...");
+        println!("⚙️ Processing bundle chunks...");
+    }
+    
     // Analyze static chunks
     let static_dir = next_dir.join("static");
     if static_dir.exists() {
+        if !quiet {
+            println!("📁 Analyzing static chunks...");
+        }
         chunks.extend(analyze_static_chunks(&static_dir)?);
     }
     
     // Analyze pages
     let pages_dir = next_dir.join("server").join("pages");
     if pages_dir.exists() {
+        if !quiet {
+            println!("📄 Analyzing page chunks...");
+        }
         chunks.extend(analyze_pages_chunks(&pages_dir)?);
     }
     
@@ -112,6 +134,10 @@ async fn analyze_nextjs_bundle(next_dir: &Path) -> Result<BundleReport> {
     
     if chunks.is_empty() {
         return Err(anyhow!("No bundle chunks found in .next directory. Please run 'npm run build' first."));
+    }
+    
+    if !quiet {
+        println!("✅ Bundle analysis completed");
     }
     
     let compression_ratio = if total_size > 0 {
@@ -144,7 +170,7 @@ async fn analyze_nextjs_bundle(next_dir: &Path) -> Result<BundleReport> {
     })
 }
 
-async fn analyze_generic_bundle(build_dir: &Path) -> Result<BundleReport> {
+async fn analyze_generic_bundle(build_dir: &Path, quiet: bool) -> Result<BundleReport> {
     let mut chunks = Vec::new();
     let mut total_size = 0u64;
     

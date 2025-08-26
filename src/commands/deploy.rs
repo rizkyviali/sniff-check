@@ -51,12 +51,29 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
     let start_time = Instant::now();
     let mut checks = Vec::new();
     
+    if !quiet {
+        println!("🔄 Running 5 deployment validation checks...");
+    }
+    
     // Run all checks in sequence
     checks.push(run_env_check(quiet).await);
+    if !quiet { println!("✅ 1/5 Environment check completed"); }
+    
     checks.push(run_types_check(quiet).await);
+    if !quiet { println!("✅ 2/5 TypeScript check completed"); }
+    
     checks.push(run_large_files_check(quiet).await);
+    if !quiet { println!("✅ 3/5 Large files check completed"); }
+    
     checks.push(run_imports_check(quiet).await);
+    if !quiet { println!("✅ 4/5 Imports check completed"); }
+    
     checks.push(run_bundle_check(quiet).await);
+    if !quiet { println!("✅ 5/5 Bundle check completed"); }
+    
+    if !quiet {
+        println!("🎉 All deployment checks completed!");
+    }
     
     let total_duration = start_time.elapsed().as_millis() as u64;
     

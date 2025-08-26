@@ -71,12 +71,21 @@ fn analyze_typescript_files(quiet: bool) -> Result<TypeScriptReport> {
     let files = scanner.find_files_with_extensions(&current_dir, &["ts", "tsx"]);
     let files_count = files.len();
     
+    if !quiet {
+        println!("🔍 Found {} TypeScript files to analyze...", files_count);
+        println!("📊 Analyzing TypeScript files for type quality...");
+    }
+    
     let all_issues: Vec<Vec<TypeIssue>> = FileUtils::process_files_parallel(
         &files,
         |path| analyze_file_optimized(path),
         "Analyzing TypeScript files",
         quiet
     )?;
+    
+    if !quiet {
+        println!("✅ TypeScript analysis completed");
+    }
     
     let issues: Vec<TypeIssue> = all_issues.into_iter().flatten().collect();
     let summary = create_summary(files_count, &issues);

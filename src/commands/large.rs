@@ -115,15 +115,18 @@ fn scan_large_files(threshold: usize, quiet: bool) -> Result<LargeFileReport> {
         .max_depth(10) // Reasonable depth limit
         .parallel_threshold(20); // Use parallel processing for 20+ files
     
-    let files = if quiet {
-        walker.walk_with_extensions(&current_dir, &["ts", "tsx", "js", "jsx"])
-    } else {
-        // For non-quiet mode, could add progress tracking here
-        walker.walk_with_extensions(&current_dir, &["ts", "tsx", "js", "jsx"])
-    };
+    let files = walker.walk_with_extensions(&current_dir, &["ts", "tsx", "js", "jsx"]);
+    
+    if !quiet {
+        println!("🔍 Scanning {} files for large file detection...", files.len());
+    }
     
     perf_monitor.checkpoint("File discovery");
     let total_files = files.len();
+    
+    if !quiet {
+        println!("📊 Analyzing {} files for size thresholds...", total_files);
+    }
     
     // Use optimized parallel processing with performance monitoring
     let large_file_options: Vec<Option<LargeFile>> = walker.process_files_parallel(
@@ -140,6 +143,10 @@ fn scan_large_files(threshold: usize, quiet: bool) -> Result<LargeFileReport> {
             }
         }
     );
+    
+    if !quiet {
+        println!("✅ File analysis completed");
+    }
     
     let large_files: Vec<LargeFile> = large_file_options.into_iter().flatten().collect();
     

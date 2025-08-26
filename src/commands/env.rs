@@ -84,9 +84,11 @@ async fn analyze_environment() -> Result<EnvReport> {
     let current_dir = env::current_dir()?;
     
     // Analyze environment files
+    println!("📄 Analyzing environment files...");
     let env_files = analyze_env_files(&current_dir)?;
     
     // Get required variables (from common patterns and package.json)
+    println!("🔎 Checking required environment variables...");
     let required_vars = get_required_variables(&current_dir)?;
     
     // Check each required variable
@@ -113,6 +115,8 @@ async fn analyze_environment() -> Result<EnvReport> {
         
         variables.push(var_info);
     }
+    
+    println!("✅ Environment validation completed");
     
     let recommendations = generate_env_recommendations(&variables, &env_files);
     

@@ -76,7 +76,7 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
     }
     
     let start_time = Instant::now();
-    let report = analyze_memory_issues().await?;
+    let report = analyze_memory_issues(quiet).await?;
     let duration = start_time.elapsed().as_millis() as u64;
     
     let final_report = MemoryReport {
@@ -101,17 +101,31 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
     Ok(())
 }
 
-async fn analyze_memory_issues() -> Result<(Vec<MemoryPattern>, Vec<NodeProcess>, MemorySummary, Vec<String>)> {
+async fn analyze_memory_issues(quiet: bool) -> Result<(Vec<MemoryPattern>, Vec<NodeProcess>, MemorySummary, Vec<String>)> {
     let mut patterns = Vec::new();
     let mut recommendations = Vec::new();
     
+    if !quiet {
+        println!("🧠 Scanning for memory leak patterns...");
+    }
+    
     // Scan code for memory leak patterns
+    if !quiet {
+        println!("🔍 Analyzing code patterns for memory leaks...");
+    }
     let code_patterns = scan_for_memory_patterns().await?;
     patterns.extend(code_patterns.0);
     recommendations.extend(code_patterns.1);
     
     // Check running Node.js processes
+    if !quiet {
+        println!("⚡ Checking Node.js processes for memory usage...");
+    }
     let node_processes = check_node_processes().await?;
+    
+    if !quiet {
+        println!("✅ Memory analysis completed");
+    }
     
     // Generate recommendations based on findings
     recommendations.extend(generate_memory_recommendations(&patterns, &node_processes));

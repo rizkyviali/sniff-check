@@ -224,7 +224,7 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
         println!("{}", "🔍 Analyzing project structure and context...".bold().blue());
     }
     
-    let report = analyze_project_context().await?;
+    let report = analyze_project_context(quiet).await?;
     
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -235,23 +235,42 @@ pub async fn run(json: bool, quiet: bool) -> Result<()> {
     Ok(())
 }
 
-async fn analyze_project_context() -> Result<ContextReport> {
+async fn analyze_project_context(quiet: bool) -> Result<ContextReport> {
     let current_dir = std::env::current_dir()?;
     
     // Analyze project info
+    if !quiet {
+        println!("📁 Analyzing project information...");
+    }
     let project_info = analyze_project_info(&current_dir).await?;
     
     // Analyze project structure
+    if !quiet {
+        println!("🏢 Analyzing project structure...");
+    }
     let structure = analyze_project_structure(&current_dir).await?;
     
     // Analyze dependencies
+    if !quiet {
+        println!("📦 Analyzing dependencies...");
+    }
     let dependencies = analyze_dependencies(&current_dir).await?;
     
     // Generate architecture insights
+    if !quiet {
+        println!("🎨 Generating architecture insights...");
+    }
     let architecture = generate_architecture_insights(&structure, &dependencies).await?;
     
     // Analyze file relationships
+    if !quiet {
+        println!("🔗 Analyzing file relationships...");
+    }
     let relationships = analyze_file_relationships(&current_dir).await?;
+    
+    if !quiet {
+        println!("✅ Context analysis completed");
+    }
     
     Ok(ContextReport {
         project_info,
