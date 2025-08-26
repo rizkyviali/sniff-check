@@ -155,7 +155,15 @@ fn analyze_file_imports(path: &Path, project_root: &Path) -> Result<FileAnalysis
     
     // Extract import statements and used identifiers
     let patterns = get_common_patterns();
-    let usage_regex = regex::Regex::new(r"\b([A-Z][a-zA-Z0-9_]*|[a-z][a-zA-Z0-9_]*)\b")?;
+    
+    // Comprehensive usage detection patterns
+    let general_usage = regex::Regex::new(r"\b([A-Z][a-zA-Z0-9_]*|[a-z][a-zA-Z0-9_]*)\b")?;
+    let react_hook_usage = regex::Regex::new(r"const\s*\[([^,\]]+),\s*([^\]]+)\]\s*=\s*(use[A-Z]\w*)")?;
+    let type_annotation = regex::Regex::new(r":\s*([A-Z][a-zA-Z0-9_<>,\s\[\]]*)")?;
+    let generic_usage = regex::Regex::new(r"<([A-Z][a-zA-Z0-9_<>,\s\[\]]*?)>")?;
+    let jsx_usage = regex::Regex::new(r"</?([A-Z][a-zA-Z0-9_.]*)")?;
+    let interface_extends = regex::Regex::new(r"(?:extends|implements)\s+([A-Z][a-zA-Z0-9_<>,\s]*)")?;
+    let function_param_type = regex::Regex::new(r"\(\s*[^:)]*:\s*([A-Z][a-zA-Z0-9_<>,\s\[\]]*)")?;
     
     // First pass: collect imports
     for (line_num, line) in lines.iter().enumerate() {
@@ -168,19 +176,62 @@ fn analyze_file_imports(path: &Path, project_root: &Path) -> Result<FileAnalysis
         }
     }
     
-    // Second pass: collect used identifiers (skip import lines)
+    // Second pass: collect used identifiers with comprehensive detection
     for (_line_num, line) in lines.iter().enumerate() {
         // Skip import lines
         if patterns.import_statement.is_match(line.trim()) {
             continue;
         }
         
-        // Extract identifiers from this line
-        for cap in usage_regex.find_iter(line) {
+        let line_content = line.trim();
+        
+        // 1. General identifier usage
+        for cap in general_usage.find_iter(line_content) {
             let identifier = cap.as_str();
-            // Skip common keywords and built-ins
             if !is_keyword_or_builtin(identifier) {
                 used_identifiers.insert(identifier.to_string());
+            }
+        }
+        
+        // 2. React hook usage patterns: const [state, setState] = useState()
+        if let Some(captures) = react_hook_usage.captures(line_content) {
+            if let Some(hook_name) = captures.get(3) {
+                used_identifiers.insert(hook_name.as_str().to_string());
+            }
+        }
+        
+        // 3. TypeScript type annotations: variable: Type
+        for captures in type_annotation.captures_iter(line_content) {
+            if let Some(type_match) = captures.get(1) {
+                extract_type_identifiers(type_match.as_str(), &mut used_identifiers);
+            }
+        }
+        
+        // 4. Generic type usage: Array<Type>, Promise<Result>
+        for captures in generic_usage.captures_iter(line_content) {
+            if let Some(generic_match) = captures.get(1) {
+                extract_type_identifiers(generic_match.as_str(), &mut used_identifiers);
+            }
+        }
+        
+        // 5. JSX component usage: <Component>
+        for captures in jsx_usage.captures_iter(line_content) {
+            if let Some(component) = captures.get(1) {
+                used_identifiers.insert(component.as_str().to_string());
+            }
+        }
+        
+        // 6. Interface extends/implements
+        for captures in interface_extends.captures_iter(line_content) {
+            if let Some(interface_match) = captures.get(1) {
+                extract_type_identifiers(interface_match.as_str(), &mut used_identifiers);
+            }
+        }
+        
+        // 7. Function parameter types: (param: Type)
+        for captures in function_param_type.captures_iter(line_content) {
+            if let Some(param_type) = captures.get(1) {
+                extract_type_identifiers(param_type.as_str(), &mut used_identifiers);
             }
         }
     }
@@ -333,6 +384,35 @@ fn find_unused_items(parsed_import: &ParsedImport, used_identifiers: &HashSet<St
     }
     
     unused
+}
+
+/// Extract type identifiers from a type string like "Product & { creator: Creator }" or "Array<User>"
+fn extract_type_identifiers(type_str: &str, used_identifiers: &mut HashSet<String>) {
+    // Clean up the type string and extract identifiers
+    let type_identifier_regex = regex::Regex::new(r"\b([A-Z][a-zA-Z0-9_]*)\b").unwrap();
+    
+    for cap in type_identifier_regex.find_iter(type_str) {
+        let identifier = cap.as_str();
+        // Skip built-in TypeScript types
+        if !is_typescript_builtin_type(identifier) {
+            used_identifiers.insert(identifier.to_string());
+        }
+    }
+}
+
+/// Check if an identifier is a built-in TypeScript type
+fn is_typescript_builtin_type(identifier: &str) -> bool {
+    matches!(identifier, 
+        "Array" | "Promise" | "Record" | "Partial" | "Required" | "Pick" | "Omit" | 
+        "Exclude" | "Extract" | "NonNullable" | "Parameters" | "ConstructorParameters" |
+        "ReturnType" | "InstanceType" | "ThisParameterType" | "OmitThisParameter" |
+        "ThisType" | "Uppercase" | "Lowercase" | "Capitalize" | "Uncapitalize" |
+        "String" | "Number" | "Boolean" | "Object" | "Function" | "Date" | "RegExp" |
+        "Error" | "Map" | "Set" | "WeakMap" | "WeakSet" | "ArrayBuffer" | "DataView" |
+        "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" |
+        "Int32Array" | "Uint32Array" | "Float32Array" | "Float64Array" | "BigInt64Array" |
+        "BigUint64Array"
+    )
 }
 
 fn check_import_validity(

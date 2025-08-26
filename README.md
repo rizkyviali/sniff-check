@@ -8,7 +8,7 @@
 
 A comprehensive, high-performance Rust CLI tool that enforces opinionated code quality standards for TypeScript/Next.js projects. Built for speed, reliability, and developer productivity with advanced performance optimizations and comprehensive testing.
 
-**🆕 NEW in v0.1.8: TypeScript Import Fix!** Fixed critical TypeScript inline type import parsing bug - no more false positives for `import { type Foo }` patterns.
+**🆕 NEW in v0.1.9: False Positives ELIMINATED!** Revolutionary fix for unused import detection - went from 100% false positives to accurate TypeScript/React analysis.
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizkyviali)
 

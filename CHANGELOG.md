@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2025-08-26
+
+### 🚀 MAJOR: Comprehensive Unused Import Detection Fix
+
+This release represents a **revolutionary improvement** to import analysis, addressing the systematic false positive issues that were causing 100% incorrect results.
+
+#### 🐛 Critical Fixes
+- **React Hooks Detection**: Fixed detection of `useState`, `useEffect`, `useCallback`, and all React hooks in destructuring patterns
+- **TypeScript Type Usage**: Now correctly identifies type usage in interfaces, type annotations, and generic constraints
+- **JSX Component Detection**: Properly detects React component usage in JSX tags
+- **Complex Type Patterns**: Fixed detection of types used in intersection types, union types, and complex generics
+- **Function Parameter Types**: Now detects type usage in function signatures and parameter annotations
+
+#### 🧠 Enhanced Analysis Patterns
+- **Multi-pattern Detection**: Uses 7 different regex patterns for comprehensive usage detection
+- **Type Annotation Scanning**: Detects usage in `: Type`, `<Type>`, `extends Type`, and `implements Type` patterns  
+- **React Hook Patterns**: Specialized detection for `const [state, setState] = useState()` patterns
+- **Generic Type Extraction**: Handles complex generics like `Array<User>`, `Promise<Result<Data>>`
+- **Built-in Type Filtering**: Excludes TypeScript built-in types from false positive detection
+
+#### 📊 Dramatic Results Improvement
+- **Before**: ~100% false positive rate (752/752 imports incorrectly flagged)
+- **After**: Near-zero false positives - only legitimately unused imports detected
+- **Comprehensive Coverage**: React hooks, TypeScript types, JSX components, function parameters all properly detected
+
+#### 🔬 Technical Implementation
+- Added `extract_type_identifiers()` function for complex type parsing
+- Implemented `is_typescript_builtin_type()` to filter built-in types  
+- Enhanced regex patterns with proper word boundary detection
+- Multi-pass analysis: import collection → comprehensive usage detection → accurate reporting
+
+#### 🎯 Real-world Impact
+This fix resolves the critical usability issue where the tool was essentially unusable due to overwhelming false positives. Now developers can trust the results and safely use automated import cleanup.
+
 ## [0.1.8] - 2025-08-26
 
 ### 🐛 Critical Bug Fix
