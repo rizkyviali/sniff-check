@@ -1,6 +1,6 @@
 {
   "name": "sniff-check",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "🎯 Opinionated TypeScript/Next.js Development Toolkit - Find large files, unused imports, broken imports, and enforce code quality standards with lightning speed",
   "main": "index.js",
   "bin": {
@@ -13,7 +13,8 @@
   "keywords": [
     "typescript",
     "nextjs",
-    "code-quality",
+    "next.js",
+    "code-quality", 
     "cli",
     "development",
     "linting",
@@ -21,8 +22,14 @@
     "memory-leak",
     "bundle-analysis",
     "imports",
+    "unused-imports",
+    "broken-imports",
     "refactoring",
-    "broken-imports"
+    "type-checking",
+    "static-analysis",
+    "developer-tools",
+    "code-analysis",
+    "rust-cli"
   ],
   "author": "Rizky Viali",
   "license": "MIT",

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2025-08-26
+
+### 🐛 Critical Bug Fix
+- **TypeScript Inline Type Import Parsing** - Fixed critical parsing bug where inline type imports like `import { type NextRequest, NextResponse }` were incorrectly analyzed, causing false positives where "type" was reported as unused instead of the actual type name
+
+### Technical Details
+- Enhanced named import parser to handle inline `type` modifiers correctly
+- Now properly extracts type names after the `type` keyword in mixed import statements
+- Maintains backward compatibility with all existing import patterns
+- Zero breaking changes - purely a bug fix release
+
+### Impact
+- Eliminates false positive "Unused: type" warnings for inline type imports
+- Improves developer experience by providing accurate unused import detection
+- Particularly beneficial for Next.js projects using server components with type imports
+
 ## [0.1.7] - 2025-08-26
 
 #### 🐛 Critical Bug Fixes

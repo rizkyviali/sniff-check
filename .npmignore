@@ -10,12 +10,13 @@ sniff.toml
 .gitignore
 .gitattributes
 
-# Documentation and guides (keep README.md)
+# Documentation and guides (keep README.md and CHANGELOG.md)
 PUBLISHING.md
 docs/
 examples/
 *.md
 !README.md
+!CHANGELOG.md
 
 # IDE and editor files
 .vscode/

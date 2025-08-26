@@ -8,7 +8,7 @@
 
 A comprehensive, high-performance Rust CLI tool that enforces opinionated code quality standards for TypeScript/Next.js projects. Built for speed, reliability, and developer productivity with advanced performance optimizations and comprehensive testing.
 
-**🆕 NEW in v0.1.7: Production Ready!** Critical bug fixes, enhanced stability, and improved TypeScript import detection.
+**🆕 NEW in v0.1.8: TypeScript Import Fix!** Fixed critical TypeScript inline type import parsing bug - no more false positives for `import { type Foo }` patterns.
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizkyviali)
 
@@ -385,7 +385,13 @@ Use `sniff config init` to generate a default configuration file, or `sniff conf
 
 ## 🆕 Recent Updates
 
-**v0.1.7** delivers production-ready stability with critical bug fixes and quality improvements:
+**v0.1.8** delivers critical TypeScript import parsing fix:
+
+- **🐛 TypeScript Import Fix**: Fixed false positive detection in inline type imports like `import { type NextRequest }`
+- **🎯 Parser Enhancement**: Now correctly extracts type names instead of reporting "type" as unused
+- **✅ Backward Compatible**: All existing functionality preserved with improved accuracy
+
+**v0.1.7** delivered production-ready stability with critical bug fixes and quality improvements:
 
 - **🐛 Critical Bug Fixes**: Resolved import parsing issues with trailing comments and TypeScript type imports  
 - **🧪 Test Suite Reliability**: All tests now pass consistently, ensuring stable releases
