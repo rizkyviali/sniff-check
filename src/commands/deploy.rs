@@ -3,7 +3,7 @@ use colored::*;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
-use super::{env, types, large, imports, bundle};
+use super::{env, types, large, imports_analyzer as imports, bundle};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeploymentReport {

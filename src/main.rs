@@ -7,7 +7,7 @@ mod utils;
 mod common;
 
 // Import specific command functions instead of using glob imports
-use commands::{menu, large, types, imports, bundle, perf, memory, env, context, deploy};
+use commands::{menu, large, types, imports_analyzer as imports, bundle, perf, memory, env, context, deploy};
 use config::ConfigUtils;
 
 #[derive(Parser)]

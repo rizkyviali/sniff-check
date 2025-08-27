@@ -1,7 +1,7 @@
 pub mod menu;
 pub mod large;
 pub mod types;
-pub mod imports;
+pub mod imports_analyzer;
 pub mod bundle;
 pub mod perf;
 pub mod memory;

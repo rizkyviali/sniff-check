@@ -11,7 +11,7 @@ pub mod json_output;
 pub mod performance;
 
 pub use file_scanner::{FileScanner};
-pub use regex_patterns::{get_common_patterns, is_in_string_literal_or_comment, is_keyword_or_builtin};
+pub use regex_patterns::{get_common_patterns, is_in_string_literal_or_comment};
 pub use report_formatter::Severity;
 pub use error_handler::{ExitCode, check_failure_threshold};
 pub use output_utils::{init_command, complete_command};
