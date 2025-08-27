@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2025-08-27
+
+### 🏗️ Code Architecture: Imports Module Refactoring
+
+#### 📦 Modular Structure
+- **Refactored imports.rs into modular package** - Extracted monolithic 600+ line imports.rs into dedicated imports_analyzer module
+- **Separation of Concerns** - Organized code into specialized files: parser.rs, validation.rs, reporter.rs, types.rs, resolver.rs
+- **Improved Maintainability** - Each module now handles specific aspects of import analysis
+- **Enhanced Testability** - Modular structure enables focused unit testing of individual components
+
+#### 🔧 Technical Improvements
+- **parser.rs** - Dedicated import statement parsing logic
+- **validation.rs** - Import usage validation and unused detection
+- **reporter.rs** - Report generation and formatting
+- **types.rs** - Shared data structures and type definitions
+- **resolver.rs** - Import path resolution and broken import detection
+- **mod.rs** - Public API and module coordination
+
+#### 🎯 Developer Benefits
+- **Easier Feature Development** - New import analysis features can be added to specific modules
+- **Better Code Navigation** - Related functionality is logically grouped
+- **Reduced Complexity** - Each file focuses on a single responsibility
+- **Future-Proof Architecture** - Modular design supports future enhancements
+
+### Impact
+This refactoring maintains 100% backward compatibility while significantly improving code organization and maintainability. The imports command functionality remains identical for users.
+
 ## [0.1.10] - 2025-08-26
 
 ### ✨ Enhanced User Experience: Progress Feedback
