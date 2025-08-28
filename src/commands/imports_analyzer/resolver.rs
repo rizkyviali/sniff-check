@@ -71,13 +71,43 @@ impl PathAliasResolver {
             if import_path.starts_with(prefix) {
                 let suffix = &import_path[prefix.len()..];
                 if let Some(target) = targets.first() {
-                    let resolved = target.join(suffix.trim_start_matches('/'));
+                    let clean_suffix = suffix.trim_start_matches('/');
+                    let resolved = target.join(clean_suffix);
+                    
+                    // If the resolved path doesn't exist, try removing redundant path segments
+                    if !import_exists(&resolved) {
+                        if let Some(better_path) = self.try_fix_redundant_path(target, clean_suffix) {
+                            return Some(better_path);
+                        }
+                    }
+                    
                     return Some(resolved);
                 }
             }
         } else if pattern == import_path {
             if let Some(target) = targets.first() {
                 return Some(target.clone());
+            }
+        }
+        None
+    }
+    
+    /// Try to fix paths with redundant segments like src/src/... -> src/...
+    fn try_fix_redundant_path(&self, target: &PathBuf, suffix: &str) -> Option<PathBuf> {
+        // Get the last component of the target path
+        if let Some(target_name) = target.file_name().and_then(|n| n.to_str()) {
+            // Check if suffix starts with the same component
+            if let Some(first_part) = suffix.split('/').next() {
+                if first_part == target_name {
+                    // Remove the redundant first part from suffix
+                    let remaining = suffix.splitn(2, '/').nth(1)?;
+                    let fixed_path = target.join(remaining);
+                    
+                    // Only return if this path actually exists
+                    if import_exists(&fixed_path) {
+                        return Some(fixed_path);
+                    }
+                }
             }
         }
         None

@@ -85,7 +85,17 @@ pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
     let start_time = std::time::Instant::now();
     init_command("large file", quiet);
     
-    let report = scan_large_files(threshold, quiet)?;
+    // Load config for configurable thresholds
+    let config = Config::load().unwrap_or_default();
+    
+    // Use config's threshold if CLI uses the default value (100)
+    let effective_threshold = if threshold == 100 {
+        config.large_files.threshold
+    } else {
+        threshold  // Use explicit CLI value
+    };
+    
+    let report = scan_large_files_with_config(effective_threshold, &config, quiet)?;
     let duration_ms = start_time.elapsed().as_millis() as u64;
     
     // Create standardized JSON response
@@ -97,7 +107,7 @@ pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
         Some(duration_ms),
     );
     
-    output_result(&response, json, quiet, |report, quiet| print_report(report, quiet))?;
+    output_result(&response, json, quiet, |report, quiet| print_report(report, &config, quiet))?;
     
     // Complete command and use common error handling
     complete_command("large file", report.summary.large_files_found == 0, quiet);
@@ -106,7 +116,7 @@ pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
     Ok(())
 }
 
-fn scan_large_files(threshold: usize, quiet: bool) -> Result<LargeFileReport> {
+fn scan_large_files_with_config(threshold: usize, config: &Config, quiet: bool) -> Result<LargeFileReport> {
     let mut perf_monitor = PerformanceMonitor::new();
     let current_dir = std::env::current_dir()?;
     
@@ -136,8 +146,7 @@ fn scan_large_files(threshold: usize, quiet: bool) -> Result<LargeFileReport> {
             let line_count = count_lines_optimized(path).unwrap_or(0);
             if line_count >= threshold {
                 let size_bytes = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-                let config = Config::load().unwrap_or_default();
-                Some(create_large_file_info(path, line_count, size_bytes, &config))
+                Some(create_large_file_info(path, line_count, size_bytes, config))
             } else {
                 None
             }
@@ -257,6 +266,16 @@ fn determine_severity_with_config(lines: usize, config: &Config) -> Severity {
     }
 }
 
+/// Get dynamic severity labels based on config
+fn get_severity_labels(config: &Config) -> (String, String, String) {
+    let levels = &config.large_files.severity_levels;
+    (
+        format!("Critical ({}+ lines)", levels.critical),
+        format!("Error ({}-{} lines)", levels.error, levels.critical - 1),
+        format!("Warning ({}-{} lines)", levels.warning, levels.error - 1),
+    )
+}
+
 fn generate_suggestions(file_type: &FileType, _lines: usize) -> Vec<String> {
     let mut suggestions = Vec::new();
     
@@ -337,7 +356,7 @@ fn create_summary(total_files: usize, large_files: &[LargeFile]) -> Summary {
     }
 }
 
-fn print_report(report: &LargeFileReport, quiet: bool) {
+fn print_report(report: &LargeFileReport, config: &Config, quiet: bool) {
     if !quiet {
         println!();
         println!("{}", "📊 Large Files Report".bold().blue());
@@ -350,41 +369,44 @@ fn print_report(report: &LargeFileReport, quiet: bool) {
         return;
     }
     
+    // Get dynamic severity labels based on config
+    let (critical_label, error_label, warning_label) = get_severity_labels(config);
+    
     // Group files by severity
     let mut files_by_severity: HashMap<String, Vec<&LargeFile>> = HashMap::new();
     
     for file in &report.files {
         let severity_key = match file.severity {
-            Severity::Critical => "Critical (400+ lines)",
-            Severity::Error => "Error (200-399 lines)",
-            Severity::Warning => "Warning (100-199 lines)",
+            Severity::Critical => &critical_label,
+            Severity::Error => &error_label,
+            Severity::Warning => &warning_label,
         };
         files_by_severity.entry(severity_key.to_string()).or_default().push(file);
     }
     
     // Print critical files first
-    if let Some(critical_files) = files_by_severity.get("Critical (400+ lines)") {
+    if let Some(critical_files) = files_by_severity.get(&critical_label) {
         for file in critical_files {
             print_file_info_compact(file, "critical");
         }
     }
     
     // Print error files
-    if let Some(error_files) = files_by_severity.get("Error (200-399 lines)") {
+    if let Some(error_files) = files_by_severity.get(&error_label) {
         for file in error_files {
             print_file_info_compact(file, "error");
         }
     }
     
     // Print warning files
-    if let Some(warning_files) = files_by_severity.get("Warning (100-199 lines)") {
+    if let Some(warning_files) = files_by_severity.get(&warning_label) {
         for file in warning_files {
             print_file_info_compact(file, "warning");
         }
     }
     
     // Print summary
-    print_summary(&report.summary);
+    print_summary(&report.summary, config);
 }
 
 fn print_file_info_compact(file: &LargeFile, severity: &str) {
@@ -418,7 +440,7 @@ fn print_file_info_compact(file: &LargeFile, severity: &str) {
     println!();
 }
 
-fn print_summary(summary: &Summary) {
+fn print_summary(summary: &Summary, config: &Config) {
     println!("{}", "📈 SUMMARY".bold().white());
     println!("{}", "─────────".white());
     println!("  Files scanned: {}", summary.total_files_scanned);
@@ -435,5 +457,6 @@ fn print_summary(summary: &Summary) {
     }
     
     println!();
-    println!("{}", "💡 TIP: Files over 100 lines are considered 'smelly code' and should be refactored".dimmed());
+    let tip_threshold = config.large_files.severity_levels.warning;
+    println!("{}", format!("💡 TIP: Files over {} lines are considered 'smelly code' and should be refactored", tip_threshold).dimmed());
 }

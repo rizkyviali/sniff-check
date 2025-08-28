@@ -9,6 +9,14 @@ use walkdir::WalkDir;
 use crate::config::Config;
 use crate::common::{get_common_patterns, is_in_string_literal_or_comment, Severity};
 
+#[derive(Debug, Clone)]
+pub struct SystemMemoryInfo {
+    pub total_memory_gb: f64,
+    pub available_memory_gb: f64,
+    pub high_memory_threshold_mb: f64,
+    pub critical_memory_threshold_mb: f64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MemoryReport {
     pub patterns: Vec<MemoryPattern>,
@@ -440,12 +448,15 @@ async fn check_node_processes() -> Result<Vec<NodeProcess>> {
                             fields[2].parse::<f64>(),
                             fields[3].parse::<f64>()
                         ) {
-                            // Convert memory percentage to MB (rough estimation)
-                            let memory_mb = mem * 16.0; // Rough conversion assuming 16GB system
+                            // Get system memory info for dynamic thresholds
+                            let system_info = get_system_memory_info();
                             
-                            let status = if memory_mb > 1000.0 {
+                            // Convert memory percentage to actual MB based on system memory
+                            let memory_mb = calculate_memory_mb_from_percentage(mem, &system_info);
+                            
+                            let status = if memory_mb > system_info.critical_memory_threshold_mb {
                                 ProcessStatus::MemoryLeak
-                            } else if memory_mb > 500.0 {
+                            } else if memory_mb > system_info.high_memory_threshold_mb {
                                 ProcessStatus::HighMemory
                             } else {
                                 ProcessStatus::Normal
@@ -708,5 +719,83 @@ fn print_memory_summary(summary: &MemorySummary, duration_ms: u64) {
     }
     
     println!();
-    println!("{}", "💡 TIP: Use 'node --max-old-space-size=4096' to increase Node.js memory limit if needed".dimmed());
+    // Dynamic tip based on system memory
+    let system_info = get_system_memory_info();
+    let recommended_node_memory = (system_info.total_memory_gb * 1024.0 * 0.5) as u32; // 50% of system RAM
+    let recommended_node_memory = recommended_node_memory.min(8192).max(2048); // Clamp between 2GB-8GB
+    
+    println!("{}", format!("💡 TIP: Use 'node --max-old-space-size={}' to optimize Node.js memory limit for your system ({:.1}GB RAM)", 
+        recommended_node_memory, system_info.total_memory_gb).dimmed());
+}
+
+/// Get system memory information and calculate dynamic thresholds
+fn get_system_memory_info() -> SystemMemoryInfo {
+    // Try to get system memory info on Linux/macOS
+    let total_memory_gb = get_total_system_memory_gb().unwrap_or(8.0); // Default to 8GB if detection fails
+    
+    // Calculate thresholds based on system memory
+    let high_memory_threshold_mb = (total_memory_gb * 1024.0 * 0.05).max(256.0); // 5% of RAM, min 256MB
+    let critical_memory_threshold_mb = (total_memory_gb * 1024.0 * 0.15).max(512.0); // 15% of RAM, min 512MB
+    
+    SystemMemoryInfo {
+        total_memory_gb,
+        available_memory_gb: total_memory_gb, // Simplified for now
+        high_memory_threshold_mb,
+        critical_memory_threshold_mb,
+    }
+}
+
+/// Detect total system memory in GB
+fn get_total_system_memory_gb() -> Option<f64> {
+    // Try Linux /proc/meminfo first
+    if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
+        for line in meminfo.lines() {
+            if line.starts_with("MemTotal:") {
+                if let Some(kb_str) = line.split_whitespace().nth(1) {
+                    if let Ok(kb) = kb_str.parse::<u64>() {
+                        return Some(kb as f64 / 1024.0 / 1024.0); // Convert KB to GB
+                    }
+                }
+            }
+        }
+    }
+    
+    // Try macOS system_profiler as fallback
+    if let Ok(output) = Command::new("system_profiler")
+        .arg("SPHardwareDataType")
+        .output()
+    {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        for line in output_str.lines() {
+            if line.contains("Memory:") {
+                // Parse "Memory: 16 GB" or similar
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(gb) = parts[1].parse::<f64>() {
+                        return Some(gb);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Try Windows as another fallback (PowerShell)
+    if let Ok(output) = Command::new("powershell")
+        .arg("-Command")
+        .arg("(Get-WmiObject -Class Win32_ComputerSystem).TotalPhysicalMemory")
+        .output()
+    {
+        if let Ok(output_str) = String::from_utf8(output.stdout) {
+            if let Ok(bytes) = output_str.trim().parse::<u64>() {
+                return Some(bytes as f64 / 1024.0 / 1024.0 / 1024.0); // Convert bytes to GB
+            }
+        }
+    }
+    
+    None
+}
+
+/// Calculate memory usage in MB from percentage and actual system memory  
+fn calculate_memory_mb_from_percentage(memory_percentage: f64, system_info: &SystemMemoryInfo) -> f64 {
+    (memory_percentage / 100.0) * system_info.total_memory_gb * 1024.0
 }

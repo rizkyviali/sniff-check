@@ -121,13 +121,22 @@ async fn run_lighthouse_audit() -> Result<(Vec<AuditResult>, Vec<String>)> {
     let mut audit_results = Vec::new();
     let mut recommendations = Vec::new();
     
-    // Try common development server URLs
-    let urls = vec![
-        "http://localhost:3000",
-        "http://localhost:3001", 
-        "http://localhost:8000",
-        "http://localhost:8080",
+    // Auto-detect running dev servers
+    let detected_urls = detect_running_servers().await;
+    
+    // Fallback to common ports if no servers detected
+    let fallback_urls = vec![
+        "http://localhost:3000".to_string(),
+        "http://localhost:3001".to_string(), 
+        "http://localhost:8000".to_string(),
+        "http://localhost:8080".to_string(),
     ];
+    
+    let urls = if !detected_urls.is_empty() {
+        detected_urls
+    } else {
+        fallback_urls
+    };
     
     let mut lighthouse_output = None;
     
@@ -584,4 +593,124 @@ impl ToTitleCase for str {
             .collect::<Vec<String>>()
             .join(" ")
     }
+}
+
+/// Auto-detect running development servers
+async fn detect_running_servers() -> Vec<String> {
+    
+    let mut detected_servers = Vec::new();
+    
+    // Common development server ports to check
+    let ports_to_check = vec![
+        3000, 3001, 3002, 3003, // React, Next.js
+        4200, 4201, // Angular
+        8000, 8001, 8080, 8081, // General dev servers
+        5000, 5001, 5173, 5174, // Vite, other bundlers
+        9000, 9001, // Webpack dev server
+        1234, // Parcel
+    ];
+    
+    // Check each port for active HTTP server
+    for port in ports_to_check {
+        if is_port_responsive(port).await {
+            let url = format!("http://localhost:{}", port);
+            // Verify it's actually an HTTP server by trying to connect
+            if is_http_server_responsive(&url).await {
+                detected_servers.push(url);
+            }
+        }
+    }
+    
+    // Also check for framework-specific processes
+    if let Ok(framework_servers) = detect_framework_servers().await {
+        detected_servers.extend(framework_servers);
+    }
+    
+    detected_servers
+}
+
+/// Check if a port is listening and responsive
+async fn is_port_responsive(port: u16) -> bool {
+    use std::net::{TcpStream, SocketAddr};
+    use std::time::Duration;
+    
+    let addr = format!("127.0.0.1:{}", port);
+    if let Ok(socket_addr) = addr.parse::<SocketAddr>() {
+        TcpStream::connect_timeout(&socket_addr, Duration::from_millis(100)).is_ok()
+    } else {
+        false
+    }
+}
+
+/// Verify the server is actually serving HTTP content
+async fn is_http_server_responsive(url: &str) -> bool {
+    // Try to make a quick HEAD request to verify it's HTTP
+    if let Ok(output) = tokio::process::Command::new("curl")
+        .arg("-s")
+        .arg("-I") // HEAD request
+        .arg("--connect-timeout")
+        .arg("1")
+        .arg("--max-time")
+        .arg("2")
+        .arg(url)
+        .output()
+        .await
+    {
+        let response = String::from_utf8_lossy(&output.stdout);
+        response.starts_with("HTTP/") && (response.contains("200") || response.contains("404"))
+    } else {
+        false
+    }
+}
+
+/// Detect servers from known framework processes
+async fn detect_framework_servers() -> Result<Vec<String>> {
+    let mut servers = Vec::new();
+    
+    // Check for Next.js dev server
+    if let Ok(output) = tokio::process::Command::new("pgrep")
+        .arg("-f")
+        .arg("next dev")
+        .output()
+        .await
+    {
+        if output.status.success() && !output.stdout.is_empty() {
+            // Next.js typically runs on 3000
+            if is_port_responsive(3000).await {
+                servers.push("http://localhost:3000".to_string());
+            }
+        }
+    }
+    
+    // Check for Vite dev server
+    if let Ok(output) = tokio::process::Command::new("pgrep")
+        .arg("-f")
+        .arg("vite")
+        .output()
+        .await
+    {
+        if output.status.success() && !output.stdout.is_empty() {
+            // Vite typically runs on 5173
+            if is_port_responsive(5173).await {
+                servers.push("http://localhost:5173".to_string());
+            }
+        }
+    }
+    
+    // Check for Angular dev server
+    if let Ok(output) = tokio::process::Command::new("pgrep")
+        .arg("-f")
+        .arg("ng serve")
+        .output()
+        .await
+    {
+        if output.status.success() && !output.stdout.is_empty() {
+            // Angular typically runs on 4200
+            if is_port_responsive(4200).await {
+                servers.push("http://localhost:4200".to_string());
+            }
+        }
+    }
+    
+    Ok(servers)
 }

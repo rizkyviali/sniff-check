@@ -3,6 +3,7 @@ use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::fs;
 use walkdir::WalkDir;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,6 +30,26 @@ pub enum ChunkType {
     Vendor,
     Runtime,
     Static,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Framework {
+    NextJs,
+    React,
+    Vue,
+    Angular,
+    Svelte,
+    Vite,
+    Webpack,
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+pub struct FrameworkLimits {
+    pub max_total_size_mb: f64,
+    pub max_main_chunk_mb: f64,
+    pub max_vendor_chunk_mb: f64,
+    pub performance_budget_mb: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -151,8 +172,8 @@ async fn analyze_nextjs_bundle(next_dir: &Path, quiet: bool) -> Result<BundleRep
         .max_by_key(|c| c.size_bytes)
         .map(|c| c.name.clone());
     
-    let warnings = generate_warnings(&chunks);
-    let recommendations = generate_recommendations(&chunks);
+    let warnings = generate_warnings(&chunks, next_dir);
+    let recommendations = generate_recommendations(&chunks, next_dir);
     
     let chunk_count = chunks.len();
     
@@ -208,8 +229,8 @@ async fn analyze_generic_bundle(build_dir: &Path, quiet: bool) -> Result<BundleR
         .max_by_key(|c| c.size_bytes)
         .map(|c| c.name.clone());
     
-    let warnings = generate_warnings(&chunks);
-    let recommendations = generate_recommendations(&chunks);
+    let warnings = generate_warnings(&chunks, build_dir);
+    let recommendations = generate_recommendations(&chunks, build_dir);
     
     let chunk_count = chunks.len();
     
@@ -314,7 +335,7 @@ fn estimate_compressed_size(original_size: u64) -> Option<u64> {
     Some((original_size as f64 * 0.35) as u64)
 }
 
-fn generate_warnings(chunks: &[BundleChunk]) -> Vec<String> {
+fn generate_warnings(chunks: &[BundleChunk], build_dir: &Path) -> Vec<String> {
     let mut warnings = Vec::new();
     
     // Check for oversized chunks
@@ -325,17 +346,38 @@ fn generate_warnings(chunks: &[BundleChunk]) -> Vec<String> {
         }
     }
     
-    // Check total bundle size
+    // Check total bundle size with framework-specific limits
     let total_size: u64 = chunks.iter().map(|c| c.size_bytes).sum();
-    if total_size > 2_000_000 {
-        warnings.push(format!("Total bundle size exceeds 2MB ({} MB)", 
-            total_size / 1_000_000));
+    let framework = detect_framework(build_dir);
+    let limits = get_framework_limits(&framework);
+    let total_size_mb = total_size as f64 / 1_000_000.0;
+    
+    if total_size_mb > limits.max_total_size_mb {
+        let framework_name = match framework {
+            Framework::NextJs => "Next.js",
+            Framework::React => "React",
+            Framework::Vue => "Vue",
+            Framework::Angular => "Angular",
+            Framework::Svelte => "Svelte",
+            Framework::Vite => "Vite",
+            Framework::Webpack => "Webpack",
+            Framework::Unknown => "JavaScript",
+        };
+        
+        warnings.push(format!("Total bundle size ({:.1} MB) exceeds recommended {} app limit ({:.1} MB)", 
+            total_size_mb, framework_name, limits.max_total_size_mb));
+        
+        // Add performance budget warning if significantly over
+        if total_size_mb > limits.performance_budget_mb {
+            warnings.push(format!("Bundle size significantly exceeds performance budget ({:.1} MB) - consider aggressive optimization", 
+                limits.performance_budget_mb));
+        }
     }
     
     warnings
 }
 
-fn generate_recommendations(chunks: &[BundleChunk]) -> Vec<String> {
+fn generate_recommendations(chunks: &[BundleChunk], build_dir: &Path) -> Vec<String> {
     let mut recommendations = Vec::new();
     
     // Analyze chunk distribution
@@ -367,6 +409,12 @@ fn generate_recommendations(chunks: &[BundleChunk]) -> Vec<String> {
     if chunks.len() > 20 {
         recommendations.push("High number of chunks - consider optimizing chunk splitting strategy".to_string());
     }
+    
+    // Add framework-specific recommendations
+    let framework = detect_framework(build_dir);
+    let limits = get_framework_limits(&framework);
+    let framework_recommendations = generate_framework_recommendations(&framework, chunks, &limits);
+    recommendations.extend(framework_recommendations);
     
     recommendations
 }
@@ -486,4 +534,170 @@ fn print_summary(summary: &BundleSummary) {
     }
     
     println!("{}", "💡 TIP: Use tools like webpack-bundle-analyzer for detailed analysis".dimmed());
+}
+
+/// Detect the framework being used based on build output and package.json
+fn detect_framework(build_dir: &Path) -> Framework {
+    let project_root = build_dir.parent().unwrap_or(build_dir);
+    
+    // Check package.json for framework dependencies
+    if let Ok(package_json) = fs::read_to_string(project_root.join("package.json")) {
+        if package_json.contains("\"next\"") || package_json.contains("\"@next/") {
+            return Framework::NextJs;
+        }
+        if package_json.contains("\"@angular/") {
+            return Framework::Angular;
+        }
+        if package_json.contains("\"vue\"") && package_json.contains("\"@vue/") {
+            return Framework::Vue;
+        }
+        if package_json.contains("\"svelte\"") || package_json.contains("\"@sveltejs/") {
+            return Framework::Svelte;
+        }
+        if package_json.contains("\"vite\"") || package_json.contains("\"@vitejs/") {
+            return Framework::Vite;
+        }
+        if package_json.contains("\"react\"") {
+            return Framework::React;
+        }
+        if package_json.contains("\"webpack\"") {
+            return Framework::Webpack;
+        }
+    }
+    
+    // Check build directory structure for framework-specific patterns
+    if build_dir.join("_next").exists() || build_dir.join("server").exists() {
+        return Framework::NextJs;
+    }
+    if build_dir.join("dist").join("index.html").exists() && 
+       project_root.join("angular.json").exists() {
+        return Framework::Angular;
+    }
+    if build_dir.join("assets").exists() && 
+       (project_root.join("vite.config.js").exists() || project_root.join("vite.config.ts").exists()) {
+        return Framework::Vite;
+    }
+    
+    Framework::Unknown
+}
+
+/// Get framework-specific bundle size limits
+fn get_framework_limits(framework: &Framework) -> FrameworkLimits {
+    match framework {
+        Framework::NextJs => FrameworkLimits {
+            max_total_size_mb: 3.0,      // Next.js can handle larger bundles with SSR
+            max_main_chunk_mb: 1.0,
+            max_vendor_chunk_mb: 1.5,
+            performance_budget_mb: 2.5,
+        },
+        Framework::React => FrameworkLimits {
+            max_total_size_mb: 2.0,      // Standard SPA limits
+            max_main_chunk_mb: 0.8,
+            max_vendor_chunk_mb: 1.2,
+            performance_budget_mb: 1.5,
+        },
+        Framework::Vue => FrameworkLimits {
+            max_total_size_mb: 2.0,      // Similar to React
+            max_main_chunk_mb: 0.8,
+            max_vendor_chunk_mb: 1.2,
+            performance_budget_mb: 1.5,
+        },
+        Framework::Angular => FrameworkLimits {
+            max_total_size_mb: 4.0,      // Angular bundles tend to be larger
+            max_main_chunk_mb: 1.5,
+            max_vendor_chunk_mb: 2.0,
+            performance_budget_mb: 3.0,
+        },
+        Framework::Svelte => FrameworkLimits {
+            max_total_size_mb: 1.0,      // Svelte produces very small bundles
+            max_main_chunk_mb: 0.4,
+            max_vendor_chunk_mb: 0.6,
+            performance_budget_mb: 0.8,
+        },
+        Framework::Vite => FrameworkLimits {
+            max_total_size_mb: 2.0,      // Vite with modern bundling
+            max_main_chunk_mb: 0.8,
+            max_vendor_chunk_mb: 1.2,
+            performance_budget_mb: 1.5,
+        },
+        Framework::Webpack => FrameworkLimits {
+            max_total_size_mb: 2.5,      // Generic webpack setup
+            max_main_chunk_mb: 1.0,
+            max_vendor_chunk_mb: 1.5,
+            performance_budget_mb: 2.0,
+        },
+        Framework::Unknown => FrameworkLimits {
+            max_total_size_mb: 2.0,      // Conservative defaults
+            max_main_chunk_mb: 0.8,
+            max_vendor_chunk_mb: 1.2,
+            performance_budget_mb: 1.5,
+        },
+    }
+}
+
+/// Generate framework-specific recommendations
+fn generate_framework_recommendations(framework: &Framework, chunks: &[BundleChunk], limits: &FrameworkLimits) -> Vec<String> {
+    let mut recommendations = Vec::new();
+    let total_size_mb = chunks.iter().map(|c| c.size_bytes).sum::<u64>() as f64 / 1_000_000.0;
+    
+    // Framework-specific optimization tips
+    match framework {
+        Framework::NextJs => {
+            recommendations.push("Use Next.js Image optimization for assets".to_string());
+            recommendations.push("Enable compression in next.config.js".to_string());
+            recommendations.push("Consider using Next.js dynamic imports for code splitting".to_string());
+            if total_size_mb > limits.performance_budget_mb {
+                recommendations.push("Use Next.js Bundle Analyzer: npm install @next/bundle-analyzer".to_string());
+            }
+        },
+        Framework::React => {
+            recommendations.push("Use React.lazy() for component-level code splitting".to_string());
+            recommendations.push("Consider using React.memo() for expensive components".to_string());
+            if total_size_mb > limits.performance_budget_mb {
+                recommendations.push("Use webpack-bundle-analyzer to identify large dependencies".to_string());
+            }
+        },
+        Framework::Vue => {
+            recommendations.push("Use Vue's async components for code splitting".to_string());
+            recommendations.push("Consider tree-shaking with ES modules".to_string());
+            if total_size_mb > limits.performance_budget_mb {
+                recommendations.push("Use Vue CLI Bundle Analyzer plugin".to_string());
+            }
+        },
+        Framework::Angular => {
+            recommendations.push("Use Angular's lazy loading for feature modules".to_string());
+            recommendations.push("Enable Angular CLI's build optimizer".to_string());
+            recommendations.push("Use OnPush change detection strategy".to_string());
+            if total_size_mb > limits.performance_budget_mb {
+                recommendations.push("Use Angular CLI bundle analyzer: ng build --stats-json".to_string());
+            }
+        },
+        Framework::Svelte => {
+            recommendations.push("Leverage Svelte's compile-time optimizations".to_string());
+            recommendations.push("Use SvelteKit for automatic code splitting".to_string());
+            if total_size_mb > limits.performance_budget_mb {
+                recommendations.push("Check for unnecessary dependencies - Svelte apps should be very small".to_string());
+            }
+        },
+        Framework::Vite => {
+            recommendations.push("Use Vite's dynamic imports for code splitting".to_string());
+            recommendations.push("Enable Vite's build optimizations".to_string());
+            if total_size_mb > limits.performance_budget_mb {
+                recommendations.push("Use vite-bundle-analyzer plugin".to_string());
+            }
+        },
+        Framework::Webpack => {
+            recommendations.push("Use webpack's SplitChunksPlugin for optimization".to_string());
+            recommendations.push("Enable webpack's TerserPlugin for minification".to_string());
+            if total_size_mb > limits.performance_budget_mb {
+                recommendations.push("Use webpack-bundle-analyzer plugin".to_string());
+            }
+        },
+        Framework::Unknown => {
+            recommendations.push("Consider implementing code splitting".to_string());
+            recommendations.push("Use tree-shaking to eliminate dead code".to_string());
+        },
+    }
+    
+    recommendations
 }
