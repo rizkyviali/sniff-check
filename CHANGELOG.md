@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-01-28
+
+### ✨ New Features
+
+#### 🧩 Component Analysis Command
+- **New `sniff components` command** - Analyze and split large React/Vue/Angular components
+- **Multi-framework support** - Detects React, Vue, Angular, and Svelte components
+- **Intelligent complexity scoring** - Analyzes hooks, props, state, nesting, and logic complexity  
+- **Smart refactoring suggestions** - Provides specific guidance for component splitting
+- **Extractable parts detection** - Identifies custom hooks, utility functions, and sub-components
+- **Framework-aware recommendations** - Tailored advice for each framework's best practices
+
+#### 🚀 Enhanced Command System
+- **Improved interactive menu** - Added components command to Code Quality section
+- **Configurable thresholds** - Components command respects large files config for line limits
+- **Detailed analysis reports** - Shows component type, complexity score, and specific issues
+
+### 🔧 Infrastructure Improvements
+
+#### 🎯 Smart Auto-Detection
+- **Performance command** - Auto-detects running dev servers instead of hardcoded ports
+- **Bundle command** - Framework-specific size recommendations (Next.js: 3MB, React: 2MB, Angular: 4MB, Svelte: 1MB)
+- **Memory command** - Dynamic thresholds based on actual system memory (5% warning, 15% critical)
+
+#### ⚙️ Configuration Enhancements  
+- **Configurable line limits** - Large files command now uses `sniff.toml` thresholds
+- **Dynamic severity labels** - File analysis displays use custom config values
+- **Framework-specific limits** - Bundle analysis adapts to detected framework type
+
+### 📊 Analysis Improvements
+- **Cross-platform memory detection** - Linux, macOS, and Windows system memory detection
+- **Smart Node.js recommendations** - Memory limits based on available system RAM
+- **Framework-aware bundle analysis** - Different optimization strategies per framework
+
 ## [0.1.11] - 2025-08-27
 
 ### 🏗️ Code Architecture: Imports Module Refactoring

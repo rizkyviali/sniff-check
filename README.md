@@ -8,7 +8,7 @@
 
 A comprehensive, high-performance Rust CLI tool that enforces opinionated code quality standards for TypeScript/Next.js projects. Built for speed, reliability, and developer productivity with advanced performance optimizations and comprehensive testing.
 
-**🆕 NEW in v0.1.9: False Positives ELIMINATED!** Revolutionary fix for unused import detection - went from 100% false positives to accurate TypeScript/React analysis.
+**🆕 NEW in v0.2.0: Component Analysis!** Smart component splitting analyzer for React/Vue/Angular components with complexity scoring and refactoring guidance.
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizkyviali)
 
@@ -71,7 +71,10 @@ cargo build --release
 # 🔍 Find large files that need refactoring (>100 lines)
 sniff large
 
-# 🚫 Detect unused AND broken imports (NEW!)
+# 🧩 Analyze and split large components (NEW in v0.2.0!)
+sniff components
+
+# 🚫 Detect unused AND broken imports
 sniff imports  
 
 # 📝 Check TypeScript code quality ('any' usage, type coverage)
@@ -105,6 +108,26 @@ Scans all TypeScript/JavaScript files and flags files over the threshold as "sme
 - **Warning** (100-200 lines): Needs attention
 - **Error** (200-400 lines): Should be refactored
 - **Critical** (400+ lines): Must be refactored immediately
+
+#### 🧩 Component Analysis & Splitting
+```bash
+sniff components
+sniff components --threshold 150  # Custom line threshold
+```
+
+Smart analysis of React, Vue, Angular, and Svelte components:
+- **Complexity scoring** based on hooks, props, state, and nesting
+- **Framework-specific detection** and recommendations
+- **Extractable parts identification** (custom hooks, utility functions, sub-components)
+- **Refactoring guidance** with specific splitting strategies
+- **Multi-concern detection** for components handling too many responsibilities
+
+**Analysis includes:**
+- Hook usage patterns (useState, useEffect, custom hooks)
+- Props complexity (too many props suggests multiple concerns)
+- Component nesting depth and complexity
+- Business logic that could be extracted
+- UI elements that could become reusable components
 
 #### 📝 TypeScript Quality Check
 ```bash
