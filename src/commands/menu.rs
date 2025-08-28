@@ -18,6 +18,7 @@ fn print_menu() {
     println!("{}", "🔍 Code Quality".bold().yellow());
     println!("{}", "───────────────".yellow());
     print_command("sniff large", "Large Files", "Find \"smelly code\" files over 100 lines");
+    print_command("sniff components", "Component Analysis", "Analyze and split large React/Vue/Angular components");
     print_command("sniff imports", "Unused Imports", "Detect and clean unused imports");
     print_command("sniff types", "TypeScript Coverage", "Check TypeScript type coverage and quality");
     println!();

@@ -7,7 +7,7 @@ mod utils;
 mod common;
 
 // Import specific command functions instead of using glob imports
-use commands::{menu, large, types, imports_analyzer as imports, bundle, perf, memory, env, context, deploy};
+use commands::{menu, large, types, imports_analyzer as imports, bundle, perf, memory, components, env, context, deploy};
 use config::ConfigUtils;
 
 #[derive(Parser)]
@@ -47,6 +47,11 @@ enum Commands {
     Perf,
     #[command(about = "Detect memory leaks")]
     Memory,
+    #[command(about = "Analyze and split large components")]
+    Components {
+        #[arg(long, default_value_t = 100)]
+        threshold: usize,
+    },
     #[command(about = "Validate environment variables")]
     Env,
     #[command(about = "Analyze project structure and provide context")]
@@ -87,6 +92,7 @@ async fn main() {
         Some(Commands::Bundle) => bundle::run(cli.json, cli.quiet).await,
         Some(Commands::Perf) => perf::run(cli.json, cli.quiet).await,
         Some(Commands::Memory) => memory::run(cli.json, cli.quiet).await,
+        Some(Commands::Components { threshold }) => components::run(threshold, cli.json, cli.quiet).await,
         Some(Commands::Env) => env::run(cli.json, cli.quiet).await,
         Some(Commands::Context) => context::run(cli.json, cli.quiet).await,
         Some(Commands::Deploy) => deploy::run(cli.json, cli.quiet).await,
