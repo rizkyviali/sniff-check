@@ -12,19 +12,19 @@ const version = packageJson.version;
 const platform = process.platform;
 const arch = process.arch;
 
-// Map Node.js platform/arch to Rust target triples
-const targets = {
-  'linux-x64': 'x86_64-unknown-linux-gnu',
-  'linux-arm64': 'aarch64-unknown-linux-gnu',
-  'darwin-x64': 'x86_64-apple-darwin',
-  'darwin-arm64': 'aarch64-apple-darwin',
-  'win32-x64': 'x86_64-pc-windows-msvc',
+// Map Node.js platform/arch to artifact names
+const artifactMap = {
+  'linux-x64': 'sniff-linux-x64',
+  'linux-arm64': 'sniff-linux-arm64', 
+  'darwin-x64': 'sniff-macos-x64',
+  'darwin-arm64': 'sniff-macos-arm64',
+  'win32-x64': 'sniff-windows-x64.exe',
 };
 
 const platformKey = `${platform}-${arch}`;
-const target = targets[platformKey];
+const artifactName = artifactMap[platformKey];
 
-if (!target) {
+if (!artifactName) {
   console.error(`Unsupported platform: ${platform} ${arch}`);
   process.exit(1);
 }
@@ -38,45 +38,49 @@ if (!fs.existsSync(binDir)) {
   fs.mkdirSync(binDir, { recursive: true });
 }
 
-// For now, we'll build from source since we don't have GitHub releases set up yet
-console.log('Building sniff-check from source...');
+// Download pre-built binary from GitHub releases
+const downloadUrl = `https://github.com/rizkyviali/sniff-check/releases/download/v${version}/${artifactName}`;
 
-try {
-  // Check if Rust is installed
-  execSync('cargo --version', { stdio: 'pipe' });
-  
-  // Build the binary
-  console.log('Building Rust binary...');
-  execSync('cargo build --release', { stdio: 'inherit' });
-  
-  // Copy the binary to bin directory
-  const sourceBinary = path.join(__dirname, 'target', 'release', binName);
-  if (fs.existsSync(sourceBinary)) {
-    fs.copyFileSync(sourceBinary, binPath);
-    
-    // Make it executable on Unix systems
-    if (platform !== 'win32') {
-      fs.chmodSync(binPath, 0o755);
-    }
-    
+console.log(`Downloading sniff-check v${version} for ${platformKey}...`);
+
+downloadBinary(downloadUrl, binPath)
+  .then(() => {
     console.log('✅ sniff-check installed successfully!');
     console.log(`Binary location: ${binPath}`);
     console.log('Run "sniff --help" to get started.');
-  } else {
-    throw new Error('Built binary not found');
-  }
-  
-} catch (error) {
-  console.error('❌ Failed to build sniff-check');
-  console.error('Make sure you have Rust installed: https://rustup.rs/');
-  console.error('Error:', error.message);
-  process.exit(1);
-}
-
-// TODO: In the future, download pre-built binaries from GitHub releases
-// const downloadUrl = `https://github.com/rizkyviali/sniff-check/releases/download/v${version}/sniff-${target}${platform === 'win32' ? '.exe' : ''}`;
-// console.log(`Downloading sniff-check v${version} for ${platformKey}...`);
-// downloadBinary(downloadUrl, binPath);
+  })
+  .catch((error) => {
+    console.error('❌ Failed to download sniff-check');
+    console.error('Falling back to building from source...');
+    
+    // Fallback to building from source
+    try {
+      execSync('cargo --version', { stdio: 'pipe' });
+      console.log('Building Rust binary...');
+      execSync('cargo build --release', { stdio: 'inherit' });
+      
+      const sourceBinary = path.join(__dirname, 'target', 'release', binName);
+      if (fs.existsSync(sourceBinary)) {
+        fs.copyFileSync(sourceBinary, binPath);
+        
+        if (platform !== 'win32') {
+          fs.chmodSync(binPath, 0o755);
+        }
+        
+        console.log('✅ sniff-check built and installed successfully!');
+        console.log(`Binary location: ${binPath}`);
+        console.log('Run "sniff --help" to get started.');
+      } else {
+        throw new Error('Built binary not found');
+      }
+    } catch (buildError) {
+      console.error('❌ Failed to build from source as well');
+      console.error('Make sure you have Rust installed: https://rustup.rs/');
+      console.error('Download error:', error.message);
+      console.error('Build error:', buildError.message);
+      process.exit(1);
+    }
+  });
 
 function downloadBinary(url, dest) {
   return new Promise((resolve, reject) => {

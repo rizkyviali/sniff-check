@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-08-28
+
+### 🚀 Deployment & Installation Improvements
+
+#### 🌐 Pre-built Binary Distribution
+- **GitHub Actions Release Pipeline** - Added automated build workflow for cross-platform binaries
+- **Pre-built Binary Downloads** - Install process now downloads pre-compiled binaries instead of building from source
+- **Vercel/Netlify Deployment Fix** - Resolves "cargo: command not found" errors in deployment environments
+- **Multi-platform Support** - Automated builds for Linux (x64, ARM64), macOS (x64, ARM64), and Windows (x64)
+
+#### 🔄 Enhanced Installation System
+- **Faster Installation** - No more waiting for Rust compilation during npm install
+- **Deployment Environment Compatibility** - Works in environments without Rust toolchain
+- **Graceful Fallback** - Falls back to source compilation if pre-built binary download fails
+- **Reliable CI/CD Integration** - Eliminates build failures in deployment pipelines
+
+#### 🛠️ Technical Improvements
+- **GitHub Actions Workflow** - Cross-compilation setup with proper ARM64 support
+- **Smart Artifact Naming** - Platform-specific binary names for reliable downloads
+- **Installation Robustness** - Enhanced error handling with detailed feedback
+- **Backward Compatibility** - Source building still available as fallback option
+
+### Impact
+This release solves the critical deployment issue where `sniff-check` would fail to install on Vercel, Netlify, and other deployment platforms that don't include the Rust toolchain. The package now installs quickly and reliably across all supported platforms.
+
 ## [0.2.0] - 2025-01-28
 
 ### ✨ New Features
