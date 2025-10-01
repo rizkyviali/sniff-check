@@ -7,6 +7,7 @@
     "sniff": "./bin/sniff"
   },
   "scripts": {
+    "preinstall": "node -e \"if(process.env.NODE_ENV==='production'||!process.env.npm_config_save_dev&&!process.env.npm_config_save_optional){console.error('❌ sniff-check should only be installed as devDependency. Use: npm install --save-dev sniff-check');process.exit(1)}\"",
     "postinstall": "node install.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -44,6 +45,8 @@
   "engines": {
     "node": ">=14.0.0"
   },
+  "preferGlobal": false,
+  "developmentOnly": true,
   "os": [
     "linux",
     "darwin",

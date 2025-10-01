@@ -103,7 +103,7 @@ fn test_imports_command_mixed_files() -> Result<()> {
 import React from 'react';
 
 const GoodComponent = () => {
-    return <div>Good Component</div>;
+    return React.createElement('div', null, 'Good Component');
 };
 
 export default GoodComponent;

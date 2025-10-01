@@ -5,6 +5,12 @@ const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
 
+// Skip installation in production environments
+if (process.env.NODE_ENV === 'production' || process.env.VERCEL || process.env.NETLIFY || process.env.CI) {
+  console.log('⏭️  Skipping sniff-check installation in production environment');
+  process.exit(0);
+}
+
 const packageJson = require('./package.json');
 const version = packageJson.version;
 
