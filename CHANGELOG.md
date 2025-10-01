@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-10-01
+
+### 🚀 Production Environment Support
+
+#### 🌐 Deployment Environment Compatibility
+- **Production Skip Logic** - Install script now detects production environments and skips binary installation
+- **Vercel/Netlify/CI Detection** - Automatically skips installation when `NODE_ENV=production`, `VERCEL`, `NETLIFY`, or `CI` environment variables are present
+- **DevDependency Enforcement** - Added preinstall check to enforce installation only as devDependency
+- **Deployment Documentation** - Added comprehensive DEPLOY.md with step-by-step deployment guide
+
+#### 🔧 Enhanced Installation System
+- **Smart Environment Detection** - Prevents unnecessary binary downloads in production builds
+- **Developer-focused Installation** - Forces installation as devDependency with helpful error messages
+- **CI/CD Compatibility** - Resolves deployment failures on Vercel and other platforms
+- **Graceful Production Handling** - Cleanly exits installation process in production environments
+
+#### 📚 Documentation Improvements
+- **Deployment Guide** - Complete step-by-step guide for version bumping and npm publishing
+- **Version Management** - Clear instructions for patch/minor/major releases
+- **GitHub Release Process** - Documentation for creating releases with pre-built binaries
+
+### Impact
+This release solves the critical deployment issue where `sniff-check` would cause build failures on Vercel, Netlify, and other deployment platforms. The package now behaves correctly as a development-only tool, skipping installation entirely in production environments.
+
 ## [0.2.1] - 2025-08-28
 
 ### 🚀 Deployment & Installation Improvements
