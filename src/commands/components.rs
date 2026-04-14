@@ -2,12 +2,76 @@ use anyhow::Result;
 use colored::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::OnceLock;
 use walkdir::WalkDir;
 use crate::config::Config;
 use crate::common::{ExitCode, check_failure_threshold, init_command, complete_command, create_standard_json_output, output_result};
+
+struct ComponentPatterns {
+    hook_patterns: Vec<Regex>,
+    prop_patterns: Vec<Regex>,
+    state_pattern: Regex,
+    conditional_patterns: Vec<Regex>,
+    loop_patterns: Vec<Regex>,
+    internal_fn_patterns: Vec<Regex>,
+}
+
+static COMPONENT_PATTERNS: OnceLock<ComponentPatterns> = OnceLock::new();
+
+fn get_component_patterns() -> &'static ComponentPatterns {
+    COMPONENT_PATTERNS.get_or_init(|| ComponentPatterns {
+        hook_patterns: [
+            r"useState\s*\(",
+            r"useEffect\s*\(",
+            r"useContext\s*\(",
+            r"useReducer\s*\(",
+            r"useCallback\s*\(",
+            r"useMemo\s*\(",
+            r"useRef\s*\(",
+            r"use[A-Z][a-zA-Z]*\s*\(",
+        ]
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect(),
+        prop_patterns: [
+            r"\{\s*([^}]+)\s*\}\s*=\s*props",
+            r"props\.([a-zA-Z_][a-zA-Z0-9_]*)",
+        ]
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect(),
+        state_pattern: Regex::new(r"useState\s*\(").expect("valid regex"),
+        conditional_patterns: [
+            r"if\s*\(",
+            r"\?\s*[^:]+\s*:",
+            r"&&\s*[^&]",
+        ]
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect(),
+        loop_patterns: [
+            r"for\s*\(",
+            r"while\s*\(",
+            r"\.map\s*\(",
+            r"\.forEach\s*\(",
+            r"\.filter\s*\(",
+            r"\.reduce\s*\(",
+        ]
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect(),
+        internal_fn_patterns: [
+            r"const\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*\(",
+            r"function\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(",
+            r"const\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*async",
+        ]
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect(),
+    })
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ComponentReport {
@@ -336,44 +400,19 @@ fn calculate_complexity_score(content: &str, framework: &Framework) -> u32 {
 }
 
 fn count_react_hooks(content: &str) -> u32 {
-    let hook_patterns = [
-        r"useState\s*\(",
-        r"useEffect\s*\(",
-        r"useContext\s*\(",
-        r"useReducer\s*\(",
-        r"useCallback\s*\(",
-        r"useMemo\s*\(",
-        r"useRef\s*\(",
-        r"use[A-Z][a-zA-Z]*\s*\(",  // Custom hooks
-    ];
-    
-    let mut count = 0;
-    for pattern in &hook_patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            count += re.find_iter(content).count() as u32;
-        }
-    }
-    count
+    let pats = &get_component_patterns().hook_patterns;
+    pats.iter().map(|re| re.find_iter(content).count() as u32).sum()
 }
 
 fn count_props(content: &str, framework: &Framework) -> u32 {
     match framework {
         Framework::React => {
-            // Count destructured props and props usage
-            let patterns = [
-                r"\{\s*([^}]+)\s*\}\s*=\s*props",  // { prop1, prop2 } = props
-                r"props\.([a-zA-Z_][a-zA-Z0-9_]*)", // props.something
-            ];
-            
             let mut props = std::collections::HashSet::new();
-            for pattern in &patterns {
-                if let Ok(re) = Regex::new(pattern) {
-                    for cap in re.captures_iter(content) {
-                        if let Some(match_str) = cap.get(1) {
-                            // Split by comma for destructured props
-                            for prop in match_str.as_str().split(',') {
-                                props.insert(prop.trim().to_string());
-                            }
+            for re in &get_component_patterns().prop_patterns {
+                for cap in re.captures_iter(content) {
+                    if let Some(match_str) = cap.get(1) {
+                        for prop in match_str.as_str().split(',') {
+                            props.insert(prop.trim().to_string());
                         }
                     }
                 }
@@ -386,66 +425,33 @@ fn count_props(content: &str, framework: &Framework) -> u32 {
 
 fn count_state_variables(content: &str, framework: &Framework) -> u32 {
     match framework {
-        Framework::React => {
-            if let Ok(re) = Regex::new(r"useState\s*\(") {
-                re.find_iter(content).count() as u32
-            } else {
-                0
-            }
-        },
+        Framework::React => get_component_patterns().state_pattern.find_iter(content).count() as u32,
         _ => 0, // TODO: Implement for other frameworks
     }
 }
 
 fn count_conditionals(content: &str) -> u32 {
-    let patterns = [
-        r"if\s*\(",
-        r"\?\s*[^:]+\s*:",  // Ternary operators
-        r"&&\s*[^&]",       // Logical AND in JSX
-    ];
-    
-    let mut count = 0;
-    for pattern in &patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            count += re.find_iter(content).count() as u32;
-        }
-    }
-    count
+    get_component_patterns()
+        .conditional_patterns
+        .iter()
+        .map(|re| re.find_iter(content).count() as u32)
+        .sum()
 }
 
 fn count_loops(content: &str) -> u32 {
-    let patterns = [
-        r"for\s*\(",
-        r"while\s*\(",
-        r"\.map\s*\(",
-        r"\.forEach\s*\(",
-        r"\.filter\s*\(",
-        r"\.reduce\s*\(",
-    ];
-    
-    let mut count = 0;
-    for pattern in &patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            count += re.find_iter(content).count() as u32;
-        }
-    }
-    count
+    get_component_patterns()
+        .loop_patterns
+        .iter()
+        .map(|re| re.find_iter(content).count() as u32)
+        .sum()
 }
 
 fn count_internal_functions(content: &str) -> u32 {
-    let patterns = [
-        r"const\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*\(",  // const func = (
-        r"function\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(",    // function func(
-        r"const\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*async", // const func = async
-    ];
-    
-    let mut count = 0;
-    for pattern in &patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            count += re.find_iter(content).count() as u32;
-        }
-    }
-    count
+    get_component_patterns()
+        .internal_fn_patterns
+        .iter()
+        .map(|re| re.find_iter(content).count() as u32)
+        .sum()
 }
 
 fn detect_component_issues(content: &str, line_count: usize, framework: &Framework) -> Vec<ComponentIssue> {
