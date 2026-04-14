@@ -122,8 +122,11 @@ fn analyze_file_imports(
     // First pass: collect imports
     for (line_num, line) in lines.iter().enumerate() {
         if let Some(captures) = patterns.import_statement.captures(line.trim()) {
-            let import_spec = captures.get(1).unwrap().as_str();
-            let import_path = captures.get(2).unwrap().as_str();
+            let (Some(spec_match), Some(path_match)) = (captures.get(1), captures.get(2)) else {
+                continue;
+            };
+            let import_spec = spec_match.as_str();
+            let import_path = path_match.as_str();
             
             let parsed_import = parse_import_statement(import_spec, import_path);
             imports.push((line_num + 1, line.trim().to_string(), parsed_import, import_path.to_string()));

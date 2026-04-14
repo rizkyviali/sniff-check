@@ -835,8 +835,9 @@ async fn analyze_utilities(project_dir: &Path) -> Result<Vec<UtilityInfo>> {
                                      content.matches("export{").count() +
                                      content.matches("export {").count();
                     
-                    let _has_tests = project_dir.join(format!("{}.test.ts", file_path.file_stem().unwrap().to_string_lossy())).exists() ||
-                                  project_dir.join(format!("{}.spec.ts", file_path.file_stem().unwrap().to_string_lossy())).exists();
+                    let stem = file_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                    let _has_tests = project_dir.join(format!("{}.test.ts", stem)).exists() ||
+                                  project_dir.join(format!("{}.spec.ts", stem)).exists();
                     
                     let purpose = match utility_type.as_str() {
                         "api" => UtilityPurpose::DataFetching,
