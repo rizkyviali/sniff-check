@@ -66,8 +66,11 @@ pub struct MemoryConfig {
     pub check_processes: bool,
     pub max_process_memory_mb: f64,
     pub pattern_severity_threshold: String,
+    #[serde(default)]
     pub disabled_patterns: Vec<String>,
+    #[serde(default)]
     pub excluded_dirs: Vec<String>,
+    #[serde(default)]
     pub excluded_files: Vec<String>,
 }
 
@@ -247,20 +250,20 @@ impl Config {
             if excluded.contains('*') {
                 // Simple glob matching
                 let pattern = excluded.replace('*', ".*");
-                regex::Regex::new(&pattern).unwrap().is_match(dir_name)
+                regex::Regex::new(&pattern).map_or(false, |re| re.is_match(dir_name))
             } else {
                 dir_name == excluded
             }
         })
     }
-    
+
     /// Check if a file should be excluded from scanning
     pub fn is_file_excluded(&self, file_name: &str) -> bool {
         self.large_files.excluded_files.iter().any(|excluded| {
             if excluded.contains('*') {
                 // Simple glob matching
                 let pattern = excluded.replace('*', ".*");
-                regex::Regex::new(&pattern).unwrap().is_match(file_name)
+                regex::Regex::new(&pattern).map_or(false, |re| re.is_match(file_name))
             } else {
                 file_name == excluded
             }
