@@ -8,8 +8,6 @@
 
 A comprehensive, high-performance Rust CLI tool that enforces opinionated code quality standards for TypeScript/Next.js projects. Built for speed, reliability, and developer productivity with advanced performance optimizations and comprehensive testing.
 
-**🆕 NEW in v0.2.0: Component Analysis!** Smart component splitting analyzer for React/Vue/Angular components with complexity scoring and refactoring guidance.
-
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/rizkyviali)
 
 ## 🔥 Core Philosophy
@@ -60,7 +58,7 @@ cargo build --release
 </details>
 
 ### Requirements
-- **Node.js 16+** (for npm installation)
+- **Node.js 18+** (for npm installation)
 - **Rust 1.70+** (only for cargo installation)
 
 ## 📖 Usage
@@ -71,7 +69,7 @@ cargo build --release
 # 🔍 Find large files that need refactoring (>100 lines)
 sniff large
 
-# 🧩 Analyze and split large components (NEW in v0.2.0!)
+# 🧩 Analyze and split large components
 sniff components
 
 # 🚫 Detect unused AND broken imports
@@ -285,7 +283,7 @@ SNIFF_PERF_DEBUG=1 sniff large
 - **Pre-deployment Pipeline** - Complete validation before deployment
 - **Configuration System** - Project-specific settings and overrides
 
-### ⚡ Performance & Architecture (v0.1.5)
+### ⚡ Performance & Architecture
 - **Optimized File Walker** - Smart directory filtering and parallel processing
 - **Memory-Mapped I/O** - Efficient large file handling (1MB+ files)
 - **Shared Utilities** - Eliminated 300+ lines of duplicate code
@@ -408,32 +406,23 @@ Use `sniff config init` to generate a default configuration file, or `sniff conf
 
 ## 🆕 Recent Updates
 
-**v0.1.8** delivers critical TypeScript import parsing fix:
+**v0.2.2** — Production environment support:
 
-- **🐛 TypeScript Import Fix**: Fixed false positive detection in inline type imports like `import { type NextRequest }`
-- **🎯 Parser Enhancement**: Now correctly extracts type names instead of reporting "type" as unused
-- **✅ Backward Compatible**: All existing functionality preserved with improved accuracy
+- **🌐 Deployment Compatibility** — Install script detects Vercel/Netlify/CI environments and skips binary download automatically
+- **🔧 DevDependency Enforcement** — Preinstall check prevents accidental production installs
+- **📚 Deployment Guide** — Added DEPLOY.md with step-by-step publishing instructions
 
-**v0.1.7** delivered production-ready stability with critical bug fixes and quality improvements:
+**v0.2.1** — Pre-built binary distribution:
 
-- **🐛 Critical Bug Fixes**: Resolved import parsing issues with trailing comments and TypeScript type imports  
-- **🧪 Test Suite Reliability**: All tests now pass consistently, ensuring stable releases
-- **⚡ Performance Infrastructure**: Added progress tracking foundation for large projects
-- **📊 Enhanced JSON Output**: Broken imports properly included in CI/CD responses
-- **🎯 Better User Experience**: Improved error messages and visual feedback
+- **🚀 Faster Installation** — Downloads pre-compiled binaries instead of building from source
+- **🔄 Graceful Fallback** — Falls back to `cargo build` if binary download fails
+- **🌐 Multi-platform** — Automated binaries for Linux, macOS, and Windows (x64 + ARM64)
 
-**v0.1.6** introduced powerful broken imports detection alongside existing unused imports analysis:
+**v0.2.0** — Component analysis:
 
-- **💥 Broken Imports Detection**: Identifies imports to non-existent files and uninstalled packages
-- **💡 Smart Suggestions**: Provides intelligent fix recommendations for broken imports
-- **🎯 Refactoring Support**: Perfect for detecting issues after moving/renaming files
-- **📊 Unified Reporting**: Shows both unused and broken imports together
-
-**v0.1.5** introduced major performance and architecture improvements:
-
-- **⚡ Performance**: File analysis improved from ~283ms to ~1.3ms
-- **📁 Architecture**: New shared utilities eliminate 300+ lines of duplicate code
-- **📋 JSON Output**: Standardized format with timestamps and metadata
+- **🧩 New `sniff components` command** — Complexity scoring, extractable parts detection, and refactoring guidance for React/Vue/Angular/Svelte components
+- **⚙️ Configurable thresholds** — Bundle and memory commands now adapt to your actual system and framework
+- **🔍 Smart server detection** — `sniff perf` auto-detects running dev servers
 
 See [CHANGELOG.md](./CHANGELOG.md) for complete release notes and version history.
 
