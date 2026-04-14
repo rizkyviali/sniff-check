@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-04-14
+
+### 🐛 Bug Fixes
+
+#### ⚙️ Configuration
+- **Config crash on load** — `sniff config show` and `sniff config validate` would panic with a TOML parse error when using the standard `sniff.toml` format. The `[memory]` section has optional fields (`disabled_patterns`, `excluded_dirs`, `excluded_files`) that were incorrectly required by the deserializer. Fixed with `#[serde(default)]` — existing config files now load without modification.
+
+#### 🚀 Performance Audit
+- **`sniff perf` display corruption** — Binary audit checks (Lazy Loading, Image Optimization) displayed as `0.0implemented` or `1.0implemented`. The score value and unit were concatenated with no separator, and the raw float score was shown instead of a human-readable result. Fixed to display `Yes` / `No` for boolean checks, and a space is now added between numeric values and their units.
+
+### 🔒 Panic Prevention
+
+- **`config.rs`** — `is_dir_excluded` and `is_file_excluded` used `.unwrap()` on regex compilation from user-supplied glob patterns in `sniff.toml`. An invalid glob pattern would cause a hard crash during any file scan. Changed to `.map_or(false, ...)` so invalid patterns are silently skipped.
+- **`imports_analyzer/mod.rs`** — `.unwrap()` on regex capture groups replaced with a `let...else` guard.
+- **`context.rs`** — `.file_stem().unwrap()` replaced with `.file_stem().map(...).unwrap_or_default()` to handle paths without a file stem.
+
+### ⚡ Performance
+
+- **`components.rs`** — Regex patterns in `count_react_hooks`, `count_props`, `count_state_variables`, `count_conditionals`, `count_loops`, and `count_internal_functions` were recompiled on every file analyzed. Moved to a `OnceLock<ComponentPatterns>` so all patterns are compiled once at startup.
+
+### 🔧 Installation & Package
+
+- **`install.js`** — HTTP redirect handling no longer crashes when a redirect response is missing the `Location` header.
+- **`package.json`** — Fixed `preinstall` script that blocked global installs (`npm install -g`) despite the README recommending it as the primary method. Now correctly allows global, `--save-dev`, and `--save-optional` installs while still blocking production installs.
+- **`package.json`** — `preferGlobal` corrected to `true` to match README guidance.
+- **`package.json`** — `engines.node` updated from `>=14.0.0` to `>=18.0.0` (Node 14/16 are EOL; aligns with README).
+- **`package.json`** — Added `funding` field pointing to Ko-fi.
+- **`package.json`** — `test` script changed from a failing echo to `cargo test`.
+- **`package.json`** — Removed non-standard `developmentOnly` field and dangling `main` pointing to a non-existent `index.js`.
+
+### 📚 Documentation
+
+- **`README.md`** — Removed stale "NEW in v0.2.0" banners.
+- **`README.md`** — Node.js requirement updated to `18+`.
+- **`README.md`** — Recent Updates section replaced with accurate 0.2.0–0.2.2 entries.
+- **`README.md`** — Removed version number from the "Performance & Architecture" features section heading to prevent future drift.
+
+---
+
 ## [0.2.2] - 2025-10-01
 
 ### 🚀 Production Environment Support

@@ -13,7 +13,7 @@ use config::ConfigUtils;
 #[derive(Parser)]
 #[command(name = "sniff")]
 #[command(about = "Opinionated TypeScript/Next.js Development Toolkit")]
-#[command(version = "0.2.2")]
+#[command(version = "0.2.3")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
