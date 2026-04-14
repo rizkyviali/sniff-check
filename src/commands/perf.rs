@@ -459,19 +459,29 @@ fn print_performance_report(report: &PerformanceReport, quiet: bool) {
                 PerformanceStatus::NotMeasured => ("⚪", "white"),
             };
             
-            let score_text = format!("{:.1}", result.score);
+            let is_binary = result.unit.as_deref() == Some("implemented");
+            let score_text = if is_binary {
+                if result.score >= 50.0 { "Yes".to_string() } else { "No".to_string() }
+            } else {
+                format!("{:.1}", result.score)
+            };
             let colored_score = match color {
                 "green" => score_text.green(),
                 "yellow" => score_text.yellow(),
                 "red" => score_text.red(),
                 _ => score_text.white(),
             };
-            
-            println!("  {} {} ({}{})", 
-                icon, 
+            let unit_suffix = if is_binary {
+                String::new()
+            } else {
+                result.unit.as_deref().map(|u| format!(" {}", u)).unwrap_or_default()
+            };
+
+            println!("  {} {} ({}{})",
+                icon,
                 result.name.bold(),
                 colored_score,
-                result.unit.as_deref().unwrap_or("")
+                unit_suffix
             );
             
             if !result.description.is_empty() {
