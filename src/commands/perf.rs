@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -45,102 +45,71 @@ pub struct PerformanceSummary {
 }
 
 pub async fn run(json: bool, quiet: bool) -> Result<()> {
+    if !check_lighthouse_available() {
+        println!("{}", "📦 sniff perf requires Lighthouse to run.".bold());
+        println!();
+        println!("  Install it with:");
+        println!("    {}", "npm install -g lighthouse".bright_white());
+        println!();
+        println!("  Then make sure your dev server is running and re-run:");
+        println!("    {}", "sniff perf".bright_white());
+        return Ok(());
+    }
+
     if !quiet {
-        println!("{}", "🚀 Running performance audit...".bold().blue());
+        println!("{}", "🚀 Running Lighthouse performance audit...".bold().blue());
         println!("{}", "Please ensure your development server is running".dimmed());
     }
-    
+
     let start_time = Instant::now();
-    let report = perform_audit().await?;
+    let (audit_results, recommendations) = run_lighthouse_audit().await?;
     let duration = start_time.elapsed().as_millis() as u64;
-    
-    let final_report = PerformanceReport {
-        audit_results: report.0,
-        summary: report.1,
-        recommendations: report.2,
+
+    let summary = calculate_performance_summary(&audit_results);
+
+    let report = PerformanceReport {
+        audit_results,
+        summary,
+        recommendations,
         duration_ms: duration,
     };
-    
+
     if json {
-        println!("{}", serde_json::to_string_pretty(&final_report)?);
+        println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        print_performance_report(&final_report, quiet);
+        print_performance_report(&report, quiet);
     }
-    
-    // Exit with error if performance is poor
-    if final_report.summary.overall_score < 50.0 {
+
+    if report.summary.overall_score < 50.0 {
         std::process::exit(1);
     }
-    
-    Ok(())
-}
 
-async fn perform_audit() -> Result<(Vec<AuditResult>, PerformanceSummary, Vec<String>)> {
-    let mut audit_results = Vec::new();
-    let mut recommendations = Vec::new();
-    
-    // Check if Lighthouse is available
-    let lighthouse_available = check_lighthouse_available();
-    
-    if lighthouse_available {
-        // Run Lighthouse audit
-        match run_lighthouse_audit().await {
-            Ok((results, recs)) => {
-                audit_results.extend(results);
-                recommendations.extend(recs);
-            }
-            Err(_) => {
-                // Fallback to basic performance checks
-                let (results, recs) = run_basic_performance_checks().await?;
-                audit_results.extend(results);
-                recommendations.extend(recs);
-            }
-        }
-    } else {
-        // Run basic performance checks
-        let (results, recs) = run_basic_performance_checks().await?;
-        audit_results.extend(results);
-        recommendations.extend(recs);
-        
-        recommendations.insert(0, "Install Lighthouse CLI for comprehensive performance auditing: npm install -g lighthouse".to_string());
-    }
-    
-    let summary = calculate_performance_summary(&audit_results);
-    
-    Ok((audit_results, summary, recommendations))
+    Ok(())
 }
 
 fn check_lighthouse_available() -> bool {
     Command::new("lighthouse")
         .arg("--version")
         .output()
-        .is_ok()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 async fn run_lighthouse_audit() -> Result<(Vec<AuditResult>, Vec<String>)> {
-    let mut audit_results = Vec::new();
-    let mut recommendations = Vec::new();
-    
-    // Auto-detect running dev servers
     let detected_urls = detect_running_servers().await;
-    
-    // Fallback to common ports if no servers detected
+
     let fallback_urls = vec![
         "http://localhost:3000".to_string(),
-        "http://localhost:3001".to_string(), 
+        "http://localhost:3001".to_string(),
         "http://localhost:8000".to_string(),
         "http://localhost:8080".to_string(),
     ];
-    
-    let urls = if !detected_urls.is_empty() {
-        detected_urls
-    } else {
-        fallback_urls
-    };
-    
+
+    let urls = if !detected_urls.is_empty() { detected_urls } else { fallback_urls };
+
     let mut lighthouse_output = None;
-    
-    for url in urls {
+
+    for url in &urls {
         if let Ok(output) = Command::new("lighthouse")
             .arg(url)
             .arg("--output=json")
@@ -155,193 +124,45 @@ async fn run_lighthouse_audit() -> Result<(Vec<AuditResult>, Vec<String>)> {
             }
         }
     }
-    
-    if let Some(output) = lighthouse_output {
-        let lighthouse_data: serde_json::Value = serde_json::from_str(&output)?;
-        
-        // Parse Lighthouse results
-        if let Some(categories) = lighthouse_data["categories"].as_object() {
-            for (category_name, category) in categories {
-                if let Some(score) = category["score"].as_f64() {
-                    let score_percent = score * 100.0;
-                    let status = match score_percent {
-                        s if s >= 90.0 => PerformanceStatus::Excellent,
-                        s if s >= 75.0 => PerformanceStatus::Good,
-                        s if s >= 50.0 => PerformanceStatus::NeedsWork,
-                        _ => PerformanceStatus::Poor,
-                    };
-                    
-                    audit_results.push(AuditResult {
-                        name: category_name.replace('-', " ").to_title_case(),
-                        score: score_percent,
-                        status,
-                        value: Some(score_percent),
-                        unit: Some("%".to_string()),
-                        description: format!("{} score from Lighthouse audit", category_name),
-                        recommendation: get_category_recommendation(category_name, score_percent),
-                    });
-                }
-            }
-        }
-        
-        // Add specific performance recommendations
-        recommendations.extend(generate_lighthouse_recommendations(&lighthouse_data));
-    }
-    
-    Ok((audit_results, recommendations))
-}
 
-async fn run_basic_performance_checks() -> Result<(Vec<AuditResult>, Vec<String>)> {
+    let output = lighthouse_output.ok_or_else(|| {
+        anyhow!(
+            "Lighthouse could not reach any running server.\nTried: {}\n\nStart your dev server first (e.g. npm run dev).",
+            urls.join(", ")
+        )
+    })?;
+
+    let lighthouse_data: serde_json::Value = serde_json::from_str(&output)?;
+
     let mut audit_results = Vec::new();
     let mut recommendations = Vec::new();
-    
-    // Check build output size (if exists)
-    if let Ok(build_size) = check_build_size().await {
-        let status = if build_size < 1.0 {
-            PerformanceStatus::Excellent
-        } else if build_size < 2.0 {
-            PerformanceStatus::Good
-        } else if build_size < 5.0 {
-            PerformanceStatus::NeedsWork
-        } else {
-            PerformanceStatus::Poor
-        };
-        
-        audit_results.push(AuditResult {
-            name: "Bundle Size".to_string(),
-            score: calculate_bundle_score(build_size),
-            status,
-            value: Some(build_size),
-            unit: Some("MB".to_string()),
-            description: "Total size of JavaScript bundles".to_string(),
-            recommendation: if build_size > 2.0 {
-                Some("Consider code splitting and tree shaking to reduce bundle size".to_string())
-            } else {
-                None
-            },
-        });
-    }
-    
-    // Check for performance-related files and patterns
-    let performance_checks = check_performance_patterns().await?;
-    audit_results.extend(performance_checks.0);
-    recommendations.extend(performance_checks.1);
-    
-    // Add general recommendations
-    recommendations.extend(vec![
-        "Use Next.js Image component for optimized images".to_string(),
-        "Implement proper caching strategies".to_string(),
-        "Consider using a CDN for static assets".to_string(),
-        "Minimize third-party scripts and dependencies".to_string(),
-    ]);
-    
-    Ok((audit_results, recommendations))
-}
 
-async fn check_build_size() -> Result<f64> {
-    use std::fs;
-    use walkdir::WalkDir;
-    
-    let build_dirs = vec![".next", "dist", "build", "out"];
-    let mut total_size = 0u64;
-    
-    for dir in build_dirs {
-        if std::path::Path::new(dir).exists() {
-            for entry in WalkDir::new(dir) {
-                if let Ok(entry) = entry {
-                    if entry.file_type().is_file() {
-                        if let Ok(metadata) = fs::metadata(entry.path()) {
-                            total_size += metadata.len();
-                        }
-                    }
-                }
-            }
-            break; // Only check the first existing build directory
-        }
-    }
-    
-    Ok(total_size as f64 / 1_048_576.0) // Convert to MB
-}
+    if let Some(categories) = lighthouse_data["categories"].as_object() {
+        for (category_name, category) in categories {
+            if let Some(score) = category["score"].as_f64() {
+                let score_percent = score * 100.0;
+                let status = match score_percent {
+                    s if s >= 90.0 => PerformanceStatus::Excellent,
+                    s if s >= 75.0 => PerformanceStatus::Good,
+                    s if s >= 50.0 => PerformanceStatus::NeedsWork,
+                    _ => PerformanceStatus::Poor,
+                };
 
-fn calculate_bundle_score(size_mb: f64) -> f64 {
-    match size_mb {
-        s if s < 0.5 => 100.0,
-        s if s < 1.0 => 90.0,
-        s if s < 2.0 => 75.0,
-        s if s < 3.0 => 60.0,
-        s if s < 5.0 => 40.0,
-        _ => 20.0,
-    }
-}
-
-async fn check_performance_patterns() -> Result<(Vec<AuditResult>, Vec<String>)> {
-    use walkdir::WalkDir;
-    use std::fs;
-    
-    let mut audit_results = Vec::new();
-    let recommendations = Vec::new();
-    let mut has_lazy_loading = false;
-    let mut has_image_optimization = false;
-    let _has_code_splitting = false;
-    
-    // Scan for performance patterns
-    for entry in WalkDir::new(".").max_depth(3) {
-        if let Ok(entry) = entry {
-            if entry.file_type().is_file() {
-                let path = entry.path();
-                if let Some(extension) = path.extension() {
-                    if matches!(extension.to_str(), Some("ts") | Some("tsx") | Some("js") | Some("jsx")) {
-                        if let Ok(content) = fs::read_to_string(path) {
-                            // Check for lazy loading patterns
-                            if content.contains("React.lazy") || content.contains("dynamic(") {
-                                has_lazy_loading = true;
-                            }
-                            
-                            // Check for Next.js Image component
-                            if content.contains("next/image") {
-                                has_image_optimization = true;
-                            }
-                            
-                            // Check for code splitting
-                            if content.contains("import(") {
-                                // Code splitting detected but not used in current logic
-                            }
-                        }
-                    }
-                }
+                audit_results.push(AuditResult {
+                    name: category_name.replace('-', " ").to_title_case(),
+                    score: score_percent,
+                    status,
+                    value: Some(score_percent),
+                    unit: Some("%".to_string()),
+                    description: format!("{} score from Lighthouse audit", category_name),
+                    recommendation: get_category_recommendation(category_name, score_percent),
+                });
             }
         }
     }
-    
-    // Add audit results for patterns
-    audit_results.push(AuditResult {
-        name: "Lazy Loading".to_string(),
-        score: if has_lazy_loading { 100.0 } else { 0.0 },
-        status: if has_lazy_loading { PerformanceStatus::Excellent } else { PerformanceStatus::Poor },
-        value: Some(if has_lazy_loading { 1.0 } else { 0.0 }),
-        unit: Some("implemented".to_string()),
-        description: "Components are loaded lazily to improve performance".to_string(),
-        recommendation: if !has_lazy_loading {
-            Some("Implement lazy loading for components using React.lazy() or Next.js dynamic()".to_string())
-        } else {
-            None
-        },
-    });
-    
-    audit_results.push(AuditResult {
-        name: "Image Optimization".to_string(),
-        score: if has_image_optimization { 100.0 } else { 0.0 },
-        status: if has_image_optimization { PerformanceStatus::Excellent } else { PerformanceStatus::Poor },
-        value: Some(if has_image_optimization { 1.0 } else { 0.0 }),
-        unit: Some("implemented".to_string()),
-        description: "Images are optimized using Next.js Image component".to_string(),  
-        recommendation: if !has_image_optimization {
-            Some("Use Next.js Image component for automatic image optimization".to_string())
-        } else {
-            None
-        },
-    });
-    
+
+    recommendations.extend(generate_lighthouse_recommendations(&lighthouse_data));
+
     Ok((audit_results, recommendations))
 }
 
@@ -357,8 +178,7 @@ fn get_category_recommendation(category: &str, score: f64) -> Option<String> {
 
 fn generate_lighthouse_recommendations(data: &serde_json::Value) -> Vec<String> {
     let mut recommendations = Vec::new();
-    
-    // Parse audit recommendations from Lighthouse
+
     if let Some(audits) = data["audits"].as_object() {
         for (audit_id, audit) in audits {
             if let Some(score) = audit["score"].as_f64() {
@@ -375,41 +195,40 @@ fn generate_lighthouse_recommendations(data: &serde_json::Value) -> Vec<String> 
             }
         }
     }
-    
+
     recommendations
 }
 
 fn calculate_performance_summary(audit_results: &[AuditResult]) -> PerformanceSummary {
     let total_audits = audit_results.len();
     let passed_audits = audit_results.iter().filter(|r| r.score >= 75.0).count();
-    
+
     let overall_score = if total_audits > 0 {
         audit_results.iter().map(|r| r.score).sum::<f64>() / total_audits as f64
     } else {
         0.0
     };
-    
-    // Calculate category-specific scores
+
     let performance_score = audit_results.iter()
         .filter(|r| r.name.to_lowercase().contains("performance") || r.name.to_lowercase().contains("bundle"))
         .map(|r| r.score)
-        .fold(0.0, |acc, score| if acc == 0.0 { score } else { (acc + score) / 2.0 });
-    
+        .fold(0.0_f64, |acc, score| if acc == 0.0 { score } else { (acc + score) / 2.0 });
+
     let accessibility_score = audit_results.iter()
         .find(|r| r.name.to_lowercase().contains("accessibility"))
         .map(|r| r.score)
         .unwrap_or(0.0);
-    
+
     let best_practices_score = audit_results.iter()
         .find(|r| r.name.to_lowercase().contains("best"))
         .map(|r| r.score)
         .unwrap_or(0.0);
-    
+
     let seo_score = audit_results.iter()
         .find(|r| r.name.to_lowercase().contains("seo"))
         .map(|r| r.score)
         .unwrap_or(0.0);
-    
+
     PerformanceSummary {
         overall_score,
         performance_score,
@@ -428,11 +247,10 @@ fn print_performance_report(report: &PerformanceReport, quiet: bool) {
         println!("{}", "==========================".blue());
         println!();
     }
-    
-    // Print audit results by category
+
     let mut categories: HashMap<String, Vec<&AuditResult>> = HashMap::new();
     for result in &report.audit_results {
-        let category = if result.name.to_lowercase().contains("bundle") || result.name.to_lowercase().contains("performance") {
+        let category = if result.name.to_lowercase().contains("performance") {
             "Performance"
         } else if result.name.to_lowercase().contains("accessibility") {
             "Accessibility"
@@ -445,11 +263,11 @@ fn print_performance_report(report: &PerformanceReport, quiet: bool) {
         };
         categories.entry(category.to_string()).or_default().push(result);
     }
-    
-    for (category, results) in categories {
+
+    for (category, results) in &categories {
         println!("{}", format!("📊 {}", category.to_uppercase()).bold().white());
         println!("{}", "─".repeat(category.len() + 4).white());
-        
+
         for result in results {
             let (icon, color) = match result.status {
                 PerformanceStatus::Excellent => ("🟢", "green"),
@@ -458,44 +276,29 @@ fn print_performance_report(report: &PerformanceReport, quiet: bool) {
                 PerformanceStatus::Poor => ("🔴", "red"),
                 PerformanceStatus::NotMeasured => ("⚪", "white"),
             };
-            
-            let is_binary = result.unit.as_deref() == Some("implemented");
-            let score_text = if is_binary {
-                if result.score >= 50.0 { "Yes".to_string() } else { "No".to_string() }
-            } else {
-                format!("{:.1}", result.score)
-            };
+
+            let score_text = format!("{:.1}", result.score);
             let colored_score = match color {
                 "green" => score_text.green(),
                 "yellow" => score_text.yellow(),
                 "red" => score_text.red(),
                 _ => score_text.white(),
             };
-            let unit_suffix = if is_binary {
-                String::new()
-            } else {
-                result.unit.as_deref().map(|u| format!(" {}", u)).unwrap_or_default()
-            };
+            let unit_suffix = result.unit.as_deref().map(|u| format!(" {}", u)).unwrap_or_default();
 
-            println!("  {} {} ({}{})",
-                icon,
-                result.name.bold(),
-                colored_score,
-                unit_suffix
-            );
-            
+            println!("  {} {} ({}{})", icon, result.name.bold(), colored_score, unit_suffix);
+
             if !result.description.is_empty() {
                 println!("     {}", result.description.dimmed());
             }
-            
+
             if let Some(recommendation) = &result.recommendation {
                 println!("     💡 {}", recommendation.yellow());
             }
         }
         println!();
     }
-    
-    // Print recommendations
+
     if !report.recommendations.is_empty() {
         println!("{}", "💡 RECOMMENDATIONS".bold().green());
         println!("{}", "──────────────────".green());
@@ -504,31 +307,23 @@ fn print_performance_report(report: &PerformanceReport, quiet: bool) {
         }
         println!();
     }
-    
-    // Print summary
+
     print_performance_summary(&report.summary, report.duration_ms);
 }
 
 fn print_performance_summary(summary: &PerformanceSummary, duration_ms: u64) {
     println!("{}", "📈 PERFORMANCE SUMMARY".bold().white());
     println!("{}", "─────────────────────".white());
-    
-    let overall_color = match summary.overall_score {
-        s if s >= 90.0 => "green",
-        s if s >= 75.0 => "yellow", 
-        s if s >= 50.0 => "yellow",
-        _ => "red",
+
+    let colored_score = match summary.overall_score {
+        s if s >= 90.0 => format!("{:.1}%", s).green(),
+        s if s >= 75.0 => format!("{:.1}%", s).yellow(),
+        s if s >= 50.0 => format!("{:.1}%", s).yellow(),
+        s => format!("{:.1}%", s).red(),
     };
-    
-    let colored_score = match overall_color {
-        "green" => format!("{:.1}%", summary.overall_score).green(),
-        "yellow" => format!("{:.1}%", summary.overall_score).yellow(),
-        "red" => format!("{:.1}%", summary.overall_score).red(),
-        _ => format!("{:.1}%", summary.overall_score).white(),
-    };
-    
+
     println!("  Overall Score: {}", colored_score);
-    
+
     if summary.performance_score > 0.0 {
         println!("  Performance: {:.1}%", summary.performance_score);
     }
@@ -541,51 +336,49 @@ fn print_performance_summary(summary: &PerformanceSummary, duration_ms: u64) {
     if summary.seo_score > 0.0 {
         println!("  SEO: {:.1}%", summary.seo_score);
     }
-    
+
     println!("  Audits passed: {}/{}", summary.passed_audits, summary.total_audits);
     println!("  Audit time: {}ms", duration_ms);
     println!();
-    
-    // Overall assessment
+
     let (status_icon, status_text, status_color) = match summary.overall_score {
         s if s >= 90.0 => ("🎉", "EXCELLENT PERFORMANCE", "green"),
         s if s >= 75.0 => ("✅", "GOOD PERFORMANCE", "green"),
         s if s >= 50.0 => ("⚠️", "NEEDS IMPROVEMENT", "yellow"),
         _ => ("🚨", "POOR PERFORMANCE", "red"),
     };
-    
+
     let colored_status = match status_color {
         "green" => format!("{} {}", status_icon, status_text).green().bold(),
         "yellow" => format!("{} {}", status_icon, status_text).yellow().bold(),
         "red" => format!("{} {}", status_icon, status_text).red().bold(),
         _ => format!("{} {}", status_icon, status_text).white().bold(),
     };
-    
+
     println!("  Status: {}", colored_status);
-    
+
     if summary.overall_score < 75.0 {
         println!();
         println!("{}", "🎯 FOCUS AREAS".bold().cyan());
         println!("{}", "─────────────".cyan());
-        if summary.performance_score < 75.0 {
+        if summary.performance_score > 0.0 && summary.performance_score < 75.0 {
             println!("  • Optimize Core Web Vitals (LCP, FID, CLS)");
         }
-        if summary.accessibility_score < 75.0 {
+        if summary.accessibility_score > 0.0 && summary.accessibility_score < 75.0 {
             println!("  • Improve accessibility compliance");
         }
-        if summary.best_practices_score < 75.0 {
+        if summary.best_practices_score > 0.0 && summary.best_practices_score < 75.0 {
             println!("  • Follow web development best practices");
         }
-        if summary.seo_score < 75.0 {
+        if summary.seo_score > 0.0 && summary.seo_score < 75.0 {
             println!("  • Enhance SEO optimization");
         }
     }
-    
+
     println!();
     println!("{}", "💡 TIP: Run performance audits regularly during development".dimmed());
 }
 
-// Helper trait for title case conversion
 trait ToTitleCase {
     fn to_title_case(&self) -> String;
 }
@@ -605,45 +398,38 @@ impl ToTitleCase for str {
     }
 }
 
-/// Auto-detect running development servers
 async fn detect_running_servers() -> Vec<String> {
-    
     let mut detected_servers = Vec::new();
-    
-    // Common development server ports to check
+
     let ports_to_check = vec![
-        3000, 3001, 3002, 3003, // React, Next.js
-        4200, 4201, // Angular
-        8000, 8001, 8080, 8081, // General dev servers
-        5000, 5001, 5173, 5174, // Vite, other bundlers
-        9000, 9001, // Webpack dev server
-        1234, // Parcel
+        3000, 3001, 3002, 3003,
+        4200, 4201,
+        8000, 8001, 8080, 8081,
+        5000, 5001, 5173, 5174,
+        9000, 9001,
+        1234,
     ];
-    
-    // Check each port for active HTTP server
+
     for port in ports_to_check {
         if is_port_responsive(port).await {
             let url = format!("http://localhost:{}", port);
-            // Verify it's actually an HTTP server by trying to connect
             if is_http_server_responsive(&url).await {
                 detected_servers.push(url);
             }
         }
     }
-    
-    // Also check for framework-specific processes
+
     if let Ok(framework_servers) = detect_framework_servers().await {
         detected_servers.extend(framework_servers);
     }
-    
+
     detected_servers
 }
 
-/// Check if a port is listening and responsive
 async fn is_port_responsive(port: u16) -> bool {
     use std::net::{TcpStream, SocketAddr};
     use std::time::Duration;
-    
+
     let addr = format!("127.0.0.1:{}", port);
     if let Ok(socket_addr) = addr.parse::<SocketAddr>() {
         TcpStream::connect_timeout(&socket_addr, Duration::from_millis(100)).is_ok()
@@ -652,12 +438,10 @@ async fn is_port_responsive(port: u16) -> bool {
     }
 }
 
-/// Verify the server is actually serving HTTP content
 async fn is_http_server_responsive(url: &str) -> bool {
-    // Try to make a quick HEAD request to verify it's HTTP
     if let Ok(output) = tokio::process::Command::new("curl")
         .arg("-s")
-        .arg("-I") // HEAD request
+        .arg("-I")
         .arg("--connect-timeout")
         .arg("1")
         .arg("--max-time")
@@ -673,54 +457,35 @@ async fn is_http_server_responsive(url: &str) -> bool {
     }
 }
 
-/// Detect servers from known framework processes
 async fn detect_framework_servers() -> Result<Vec<String>> {
     let mut servers = Vec::new();
-    
-    // Check for Next.js dev server
+
     if let Ok(output) = tokio::process::Command::new("pgrep")
-        .arg("-f")
-        .arg("next dev")
-        .output()
-        .await
+        .arg("-f").arg("next dev")
+        .output().await
     {
-        if output.status.success() && !output.stdout.is_empty() {
-            // Next.js typically runs on 3000
-            if is_port_responsive(3000).await {
-                servers.push("http://localhost:3000".to_string());
-            }
+        if output.status.success() && !output.stdout.is_empty() && is_port_responsive(3000).await {
+            servers.push("http://localhost:3000".to_string());
         }
     }
-    
-    // Check for Vite dev server
+
     if let Ok(output) = tokio::process::Command::new("pgrep")
-        .arg("-f")
-        .arg("vite")
-        .output()
-        .await
+        .arg("-f").arg("vite")
+        .output().await
     {
-        if output.status.success() && !output.stdout.is_empty() {
-            // Vite typically runs on 5173
-            if is_port_responsive(5173).await {
-                servers.push("http://localhost:5173".to_string());
-            }
+        if output.status.success() && !output.stdout.is_empty() && is_port_responsive(5173).await {
+            servers.push("http://localhost:5173".to_string());
         }
     }
-    
-    // Check for Angular dev server
+
     if let Ok(output) = tokio::process::Command::new("pgrep")
-        .arg("-f")
-        .arg("ng serve")
-        .output()
-        .await
+        .arg("-f").arg("ng serve")
+        .output().await
     {
-        if output.status.success() && !output.stdout.is_empty() {
-            // Angular typically runs on 4200
-            if is_port_responsive(4200).await {
-                servers.push("http://localhost:4200".to_string());
-            }
+        if output.status.success() && !output.stdout.is_empty() && is_port_responsive(4200).await {
+            servers.push("http://localhost:4200".to_string());
         }
     }
-    
+
     Ok(servers)
 }

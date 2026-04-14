@@ -36,7 +36,6 @@ fn print_menu() {
     println!("{}", "🚀 Deploy".bold().red());
     println!("{}", "─────────".red());
     print_command("sniff env", "Environment Check", "Validate environment variables");
-    print_command("sniff deploy", "Pre-Deploy", "Complete deployment validation pipeline");
     println!();
     
     // Configuration section
@@ -51,7 +50,7 @@ fn print_menu() {
     println!("{}", "💡 Usage Examples:".bold().cyan());
     println!("{}", "==================".cyan());
     println!("  {:<20} {}", "sniff large".bright_white(), "# Check for large files".dimmed());
-    println!("  {:<20} {}", "sniff deploy".bright_white(), "# Run full pre-deployment check".dimmed());
+    println!("  {:<20} {}", "sniff env".bright_white(), "# Validate environment variables".dimmed());
     println!();
     
     // Quick workflow
@@ -67,7 +66,7 @@ fn print_menu() {
     println!("  {}", "sniff types".bright_white());
     println!();  
     println!("  {}", "# Pre-deployment".dimmed());
-    println!("  {}", "sniff deploy".bright_white());
+    println!("  {}", "sniff env && sniff types && sniff imports".bright_white());
     println!();
 }
 

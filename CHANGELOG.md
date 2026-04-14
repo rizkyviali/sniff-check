@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-04-14
+
+### ❌ Removed
+
+- **`sniff deploy`** — Removed the pre-deployment pipeline command. It was fundamentally broken: each sub-command (`large`, `types`, `env`, `imports`) calls `process::exit()` directly when issues are found, which killed the entire pipeline mid-run. Steps after the first failing check never executed. Users can compose individual checks directly: `sniff env && sniff types && sniff imports`.
+- **`sniff perf` fallback mode** — Removed the "basic performance checks" path that ran when Lighthouse was not installed. It produced misleading output: bundle size showed a perfect score of `100.0 MB` when no build existed, and accessibility/best-practices/SEO were permanently shown as failing focus areas despite no real analysis being done.
+
+### ✨ Changed
+
+- **`sniff perf` without Lighthouse** — Instead of an error, now prints a friendly install prompt and exits cleanly (exit 0). If Lighthouse is already installed, behaviour is unchanged.
+
+---
+
 ## [0.2.3] - 2026-04-14
 
 ### 🐛 Bug Fixes

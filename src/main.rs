@@ -7,13 +7,13 @@ mod utils;
 mod common;
 
 // Import specific command functions instead of using glob imports
-use commands::{menu, large, types, imports_analyzer as imports, bundle, perf, memory, components, env, context, deploy};
+use commands::{menu, large, types, imports_analyzer as imports, bundle, perf, memory, components, env, context};
 use config::ConfigUtils;
 
 #[derive(Parser)]
 #[command(name = "sniff")]
 #[command(about = "Opinionated TypeScript/Next.js Development Toolkit")]
-#[command(version = "0.2.3")]
+#[command(version = "0.2.4")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -56,8 +56,6 @@ enum Commands {
     Env,
     #[command(about = "Analyze project structure and provide context")]
     Context,
-    #[command(about = "Run complete deployment validation")]
-    Deploy,
     #[command(about = "Configuration management")]
     Config {
         #[command(subcommand)]
@@ -95,7 +93,6 @@ async fn main() {
         Some(Commands::Components { threshold }) => components::run(threshold, cli.json, cli.quiet).await,
         Some(Commands::Env) => env::run(cli.json, cli.quiet).await,
         Some(Commands::Context) => context::run(cli.json, cli.quiet).await,
-        Some(Commands::Deploy) => deploy::run(cli.json, cli.quiet).await,
         Some(Commands::Config { action }) => handle_config_command(action).await,
     };
     

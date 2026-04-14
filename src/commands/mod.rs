@@ -7,7 +7,6 @@ pub mod perf;
 pub mod memory;
 pub mod env;
 pub mod context;
-pub mod deploy;
 pub mod components;
 
 // Individual command re-exports removed to eliminate unused imports
