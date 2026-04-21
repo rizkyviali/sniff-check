@@ -12,7 +12,6 @@ use crate::common::{get_common_patterns, is_in_string_literal_or_comment, Severi
 #[derive(Debug, Clone)]
 pub struct SystemMemoryInfo {
     pub total_memory_gb: f64,
-    pub available_memory_gb: f64,
     pub high_memory_threshold_mb: f64,
     pub critical_memory_threshold_mb: f64,
 }
@@ -739,7 +738,6 @@ fn get_system_memory_info() -> SystemMemoryInfo {
     
     SystemMemoryInfo {
         total_memory_gb,
-        available_memory_gb: total_memory_gb, // Simplified for now
         high_memory_threshold_mb,
         critical_memory_threshold_mb,
     }

@@ -64,52 +64,14 @@ where
         }
     }
     
-    /// Add a warning to the response
-    pub fn with_warning(mut self, warning: String) -> Self {
-        self.warnings.push(warning);
-        self
-    }
-    
-    /// Add warnings to the response
-    pub fn with_warnings(mut self, warnings: Vec<String>) -> Self {
-        self.warnings.extend(warnings);
-        self
-    }
-    
-    /// Add metadata to the response
-    pub fn with_metadata(mut self, key: String, value: serde_json::Value) -> Self {
-        if self.metadata.is_none() {
-            self.metadata = Some(std::collections::HashMap::new());
-        }
-        self.metadata.as_mut().unwrap().insert(key, value);
-        self
-    }
-    
     /// Convert to pretty JSON string
     pub fn to_json_pretty(&self) -> anyhow::Result<String> {
         Ok(serde_json::to_string_pretty(self)?)
     }
     
-    /// Convert to compact JSON string
-    pub fn to_json_compact(&self) -> anyhow::Result<String> {
-        Ok(serde_json::to_string(self)?)
-    }
 }
 
 impl AnalysisStatus {
-    /// Determine status based on issue count and thresholds
-    pub fn from_issues(issues_found: usize, warning_threshold: usize, error_threshold: usize) -> Self {
-        if issues_found == 0 {
-            Self::Success
-        } else if issues_found <= warning_threshold {
-            Self::Warning
-        } else if issues_found <= error_threshold {
-            Self::Error
-        } else {
-            Self::Failed
-        }
-    }
-    
     /// Simple status based on whether issues were found
     pub fn from_has_issues(has_issues: bool) -> Self {
         if has_issues {

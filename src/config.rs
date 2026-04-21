@@ -244,57 +244,6 @@ impl Config {
         None
     }
     
-    /// Check if a directory should be excluded from scanning
-    pub fn is_dir_excluded(&self, dir_name: &str) -> bool {
-        self.large_files.excluded_dirs.iter().any(|excluded| {
-            if excluded.contains('*') {
-                // Simple glob matching
-                let pattern = excluded.replace('*', ".*");
-                regex::Regex::new(&pattern).map_or(false, |re| re.is_match(dir_name))
-            } else {
-                dir_name == excluded
-            }
-        })
-    }
-
-    /// Check if a file should be excluded from scanning
-    pub fn is_file_excluded(&self, file_name: &str) -> bool {
-        self.large_files.excluded_files.iter().any(|excluded| {
-            if excluded.contains('*') {
-                // Simple glob matching
-                let pattern = excluded.replace('*', ".*");
-                regex::Regex::new(&pattern).map_or(false, |re| re.is_match(file_name))
-            } else {
-                file_name == excluded
-            }
-        })
-    }
-    
-    /// Get required environment variables
-    pub fn get_required_env_vars(&self) -> &[String] {
-        &self.environment.required_vars
-    }
-    
-    /// Get severity level for line count
-    pub fn get_severity_for_lines(&self, line_count: usize) -> SeverityLevel {
-        if line_count >= self.large_files.severity_levels.critical {
-            SeverityLevel::Critical
-        } else if line_count >= self.large_files.severity_levels.error {
-            SeverityLevel::Error
-        } else if line_count >= self.large_files.severity_levels.warning {
-            SeverityLevel::Warning
-        } else {
-            SeverityLevel::Info
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum SeverityLevel {
-    Info,
-    Warning,
-    Error,
-    Critical,
 }
 
 /// Configuration utilities
@@ -399,31 +348,4 @@ mod tests {
         assert_eq!(config.large_files.threshold, deserialized.large_files.threshold);
     }
     
-    #[test]
-    fn test_file_exclusion() {
-        let config = Config::default();
-        
-        assert!(config.is_file_excluded("test.min.js"));
-        assert!(config.is_file_excluded("bundle.min.js"));
-        assert!(!config.is_file_excluded("test.js"));
-    }
-    
-    #[test]
-    fn test_dir_exclusion() {
-        let config = Config::default();
-        
-        assert!(config.is_dir_excluded("node_modules"));
-        assert!(config.is_dir_excluded(".next"));
-        assert!(!config.is_dir_excluded("src"));
-    }
-    
-    #[test]
-    fn test_severity_levels() {
-        let config = Config::default();
-        
-        assert_eq!(config.get_severity_for_lines(50), SeverityLevel::Info);
-        assert_eq!(config.get_severity_for_lines(150), SeverityLevel::Warning);
-        assert_eq!(config.get_severity_for_lines(300), SeverityLevel::Error);
-        assert_eq!(config.get_severity_for_lines(500), SeverityLevel::Critical);
-    }
 }

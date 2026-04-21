@@ -1,6 +1,5 @@
 /// Performance optimization utilities
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
@@ -53,16 +52,6 @@ impl OptimizedFileWalker {
     
     pub fn max_depth(mut self, depth: usize) -> Self {
         self.max_depth = Some(depth);
-        self
-    }
-    
-    pub fn exclude_dirs<S: Into<String>>(mut self, dirs: Vec<S>) -> Self {
-        self.excluded_dirs.extend(dirs.into_iter().map(|s| s.into()));
-        self
-    }
-    
-    pub fn exclude_extensions<S: Into<String>>(mut self, exts: Vec<S>) -> Self {
-        self.excluded_extensions.extend(exts.into_iter().map(|s| s.into()));
         self
     }
     
@@ -162,82 +151,6 @@ impl Default for OptimizedFileWalker {
     }
 }
 
-/// Cached file content reader for repeated access patterns
-pub struct CachedFileReader {
-    cache: std::collections::HashMap<PathBuf, Arc<String>>,
-    cache_size_limit: usize,
-    max_file_size: u64,
-}
-
-impl CachedFileReader {
-    pub fn new() -> Self {
-        Self {
-            cache: std::collections::HashMap::new(),
-            cache_size_limit: 100, // Cache up to 100 files
-            max_file_size: 1024 * 1024, // Don't cache files larger than 1MB
-        }
-    }
-    
-    pub fn with_cache_limit(mut self, limit: usize) -> Self {
-        self.cache_size_limit = limit;
-        self
-    }
-    
-    pub fn with_max_file_size(mut self, size: u64) -> Self {
-        self.max_file_size = size;
-        self
-    }
-    
-    /// Read file with caching
-    pub fn read_file<P: AsRef<Path>>(&mut self, path: P) -> std::io::Result<Arc<String>> {
-        let path_buf = path.as_ref().to_path_buf();
-        
-        // Check cache first
-        if let Some(content) = self.cache.get(&path_buf) {
-            return Ok(content.clone());
-        }
-        
-        // Check file size before reading
-        let metadata = std::fs::metadata(&path_buf)?;
-        if metadata.len() > self.max_file_size {
-            // Don't cache large files, read directly
-            let content = std::fs::read_to_string(&path_buf)?;
-            return Ok(Arc::new(content));
-        }
-        
-        // Read and cache the file
-        let content = std::fs::read_to_string(&path_buf)?;
-        let arc_content = Arc::new(content);
-        
-        // Manage cache size
-        if self.cache.len() >= self.cache_size_limit {
-            // Remove oldest entry (simple FIFO, could be improved with LRU)
-            if let Some(key) = self.cache.keys().next().cloned() {
-                self.cache.remove(&key);
-            }
-        }
-        
-        self.cache.insert(path_buf, arc_content.clone());
-        Ok(arc_content)
-    }
-    
-    /// Clear the cache
-    pub fn clear_cache(&mut self) {
-        self.cache.clear();
-    }
-    
-    /// Get cache statistics
-    pub fn cache_stats(&self) -> (usize, usize) {
-        (self.cache.len(), self.cache_size_limit)
-    }
-}
-
-impl Default for CachedFileReader {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Optimized line counting using memory mapping for large files
 pub fn count_lines_optimized<P: AsRef<Path>>(path: P) -> std::io::Result<usize> {
     use memmap2::Mmap;
@@ -262,43 +175,6 @@ pub fn count_lines_optimized<P: AsRef<Path>>(path: P) -> std::io::Result<usize> 
     Ok(count)
 }
 
-/// Batch processing utilities for better performance
-pub struct BatchProcessor<T> {
-    batch_size: usize,
-    items: Vec<T>,
-}
-
-impl<T> BatchProcessor<T> {
-    pub fn new(batch_size: usize) -> Self {
-        Self {
-            batch_size,
-            items: Vec::new(),
-        }
-    }
-    
-    pub fn add(&mut self, item: T) -> Option<Vec<T>> {
-        self.items.push(item);
-        
-        if self.items.len() >= self.batch_size {
-            Some(std::mem::take(&mut self.items))
-        } else {
-            None
-        }
-    }
-    
-    pub fn flush(&mut self) -> Vec<T> {
-        std::mem::take(&mut self.items)
-    }
-    
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
-    
-    pub fn len(&self) -> usize {
-        self.items.len()
-    }
-}
-
 /// Performance monitoring utilities
 pub struct PerformanceMonitor {
     start_time: std::time::Instant,
@@ -320,10 +196,6 @@ impl PerformanceMonitor {
     
     pub fn total_elapsed(&self) -> std::time::Duration {
         self.start_time.elapsed()
-    }
-    
-    pub fn get_checkpoints(&self) -> &[(String, std::time::Duration)] {
-        &self.checkpoints
     }
     
     pub fn print_report(&self) {

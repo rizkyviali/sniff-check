@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-04-22
+
+### 🧹 Refactor
+
+- **Dead code removal** — Removed unused functions, methods, and struct fields across the codebase to reduce noise and compile warnings:
+  - `FrameworkLimits`: removed `max_main_chunk_mb` and `max_vendor_chunk_mb` (unused after bundle analysis simplification)
+  - `OutputOptions`: removed `new`, `print_output`, `print_if_not_quiet`
+  - `error_handler`: removed `handle_command_result`, `report_error`, `validation_failed`, `file_error`
+  - `FileScanner`: removed `new`, `is_js_ts_file`, and legacy free functions `is_excluded_path` / `find_js_ts_files`
+  - `JsonResponse`: removed `with_warning`, `with_warnings`, `with_metadata`, `to_json_compact`; removed `AnalysisStatus::from_issues`
+  - `output_utils`: removed `handle_command_output` and `print_error`
+  - `performance`: removed `OptimizedFileWalker::exclude_dirs` / `exclude_extensions`, and entire `CachedFileReader` and `BatchProcessor` structs
+  - `progress`: removed `FileProgressTracker::inc`, `set_message`, `finish_and_clear`, and free functions `create_spinner` / `create_progress_bar`
+  - `regex_patterns`: removed `named_import`, `default_import` patterns and `is_keyword_or_builtin`
+  - `report_formatter`: removed `Severity::to_colored_string` / `to_icon` and the `Status` enum
+  - `memory`: removed `available_memory_gb` from `SystemMemoryInfo`
+  - `utils`: removed `FileUtils::is_node_modules` (replaced by config-aware variant throughout)
+
+### 🐛 Bug Fixes
+
+- **`context.rs`** — `analyze_directories` now uses `is_excluded_path_with_config` instead of the legacy `is_node_modules`, so user-configured `excluded_dirs` entries are respected when walking directories.
+- **`large.rs`** — Removed redundant route-type check in `determine_file_type`; simplified fallback branch in `determine_severity_with_config`.
+- **`tests/context_tests.rs`** — Fixed temp directory creation to use the current working directory instead of `/tmp`, which was being excluded by the `tmp` entry in default `excluded_dirs`.
+
+---
+
 ## [0.2.4] - 2026-04-14
 
 ### ❌ Removed

@@ -10,11 +10,6 @@ pub struct FileScanner {
 }
 
 impl FileScanner {
-    /// Create a new file scanner with the given configuration
-    pub fn new(config: Config) -> Self {
-        Self { config }
-    }
-    
     /// Create a file scanner with default configuration
     pub fn with_defaults() -> Self {
         Self {
@@ -91,19 +86,6 @@ impl FileScanner {
         }
     }
 
-    /// Check if a path is a TypeScript/JavaScript file
-    pub fn is_js_ts_file(&self, path: &Path) -> bool {
-        self.has_extension(path, &["ts", "tsx", "js", "jsx"])
-    }
-}
-
-/// Legacy compatibility functions that delegate to FileScanner
-pub fn is_excluded_path(path: &Path) -> bool {
-    FileScanner::with_defaults().is_excluded_path(path)
-}
-
-pub fn find_js_ts_files(dir: &Path) -> Vec<PathBuf> {
-    FileScanner::with_defaults().find_js_ts_files(dir)
 }
 
 #[cfg(test)]
@@ -122,10 +104,10 @@ mod tests {
     #[test]
     fn test_js_ts_file_detection() {
         let scanner = FileScanner::with_defaults();
-        
-        assert!(scanner.is_js_ts_file(&PathBuf::from("component.tsx")));
-        assert!(scanner.is_js_ts_file(&PathBuf::from("utils.js")));
-        assert!(!scanner.is_js_ts_file(&PathBuf::from("styles.css")));
+
+        assert!(scanner.has_extension(&PathBuf::from("component.tsx"), &["ts", "tsx", "js", "jsx"]));
+        assert!(scanner.has_extension(&PathBuf::from("utils.js"), &["ts", "tsx", "js", "jsx"]));
+        assert!(!scanner.has_extension(&PathBuf::from("styles.css"), &["ts", "tsx", "js", "jsx"]));
     }
 
     #[test]

@@ -80,12 +80,6 @@ impl FileUtils {
         })
     }
     
-    /// Check if path is in node_modules or other build directories (legacy)
-    pub fn is_node_modules(path: &Path) -> bool {
-        let config = Config::load().unwrap_or_default();
-        Self::is_excluded_path_with_config(path, &config)
-    }
-    
     /// Count lines in a file with memory mapping for large files
     pub fn count_lines_optimized(path: &Path) -> Result<usize> {
         let file = fs::File::open(path)?;
@@ -152,9 +146,6 @@ impl FileUtils {
         path.to_string_lossy().to_string()
     }
 }
-
-
-
 
 
 #[cfg(test)]

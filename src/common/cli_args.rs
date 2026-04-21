@@ -50,32 +50,6 @@ pub struct ValidationOptions {
     pub ignore_false_positives: bool,
 }
 
-impl OutputOptions {
-    pub fn new(json: bool, quiet: bool) -> Self {
-        Self { json, quiet }
-    }
-    
-    /// Print output based on the format settings
-    pub fn print_output<T>(&self, data: &T) -> anyhow::Result<()> 
-    where 
-        T: serde::Serialize + std::fmt::Display
-    {
-        if self.json {
-            println!("{}", serde_json::to_string_pretty(data)?);
-        } else if !self.quiet {
-            println!("{}", data);
-        }
-        Ok(())
-    }
-    
-    /// Print a message only if not in quiet mode
-    pub fn print_if_not_quiet(&self, message: &str) {
-        if !self.quiet {
-            println!("{}", message);
-        }
-    }
-}
-
 impl Default for OutputOptions {
     fn default() -> Self {
         Self {

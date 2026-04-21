@@ -47,8 +47,6 @@ pub enum Framework {
 #[derive(Debug, Clone)]
 pub struct FrameworkLimits {
     pub max_total_size_mb: f64,
-    pub max_main_chunk_mb: f64,
-    pub max_vendor_chunk_mb: f64,
     pub performance_budget_mb: f64,
 }
 
@@ -191,7 +189,7 @@ async fn analyze_nextjs_bundle(next_dir: &Path, quiet: bool) -> Result<BundleRep
     })
 }
 
-async fn analyze_generic_bundle(build_dir: &Path, quiet: bool) -> Result<BundleReport> {
+async fn analyze_generic_bundle(build_dir: &Path, _quiet: bool) -> Result<BundleReport> {
     let mut chunks = Vec::new();
     let mut total_size = 0u64;
     
@@ -584,54 +582,14 @@ fn detect_framework(build_dir: &Path) -> Framework {
 /// Get framework-specific bundle size limits
 fn get_framework_limits(framework: &Framework) -> FrameworkLimits {
     match framework {
-        Framework::NextJs => FrameworkLimits {
-            max_total_size_mb: 3.0,      // Next.js can handle larger bundles with SSR
-            max_main_chunk_mb: 1.0,
-            max_vendor_chunk_mb: 1.5,
-            performance_budget_mb: 2.5,
-        },
-        Framework::React => FrameworkLimits {
-            max_total_size_mb: 2.0,      // Standard SPA limits
-            max_main_chunk_mb: 0.8,
-            max_vendor_chunk_mb: 1.2,
-            performance_budget_mb: 1.5,
-        },
-        Framework::Vue => FrameworkLimits {
-            max_total_size_mb: 2.0,      // Similar to React
-            max_main_chunk_mb: 0.8,
-            max_vendor_chunk_mb: 1.2,
-            performance_budget_mb: 1.5,
-        },
-        Framework::Angular => FrameworkLimits {
-            max_total_size_mb: 4.0,      // Angular bundles tend to be larger
-            max_main_chunk_mb: 1.5,
-            max_vendor_chunk_mb: 2.0,
-            performance_budget_mb: 3.0,
-        },
-        Framework::Svelte => FrameworkLimits {
-            max_total_size_mb: 1.0,      // Svelte produces very small bundles
-            max_main_chunk_mb: 0.4,
-            max_vendor_chunk_mb: 0.6,
-            performance_budget_mb: 0.8,
-        },
-        Framework::Vite => FrameworkLimits {
-            max_total_size_mb: 2.0,      // Vite with modern bundling
-            max_main_chunk_mb: 0.8,
-            max_vendor_chunk_mb: 1.2,
-            performance_budget_mb: 1.5,
-        },
-        Framework::Webpack => FrameworkLimits {
-            max_total_size_mb: 2.5,      // Generic webpack setup
-            max_main_chunk_mb: 1.0,
-            max_vendor_chunk_mb: 1.5,
-            performance_budget_mb: 2.0,
-        },
-        Framework::Unknown => FrameworkLimits {
-            max_total_size_mb: 2.0,      // Conservative defaults
-            max_main_chunk_mb: 0.8,
-            max_vendor_chunk_mb: 1.2,
-            performance_budget_mb: 1.5,
-        },
+        Framework::NextJs => FrameworkLimits { max_total_size_mb: 3.0, performance_budget_mb: 2.5 },
+        Framework::React => FrameworkLimits { max_total_size_mb: 2.0, performance_budget_mb: 1.5 },
+        Framework::Vue => FrameworkLimits { max_total_size_mb: 2.0, performance_budget_mb: 1.5 },
+        Framework::Angular => FrameworkLimits { max_total_size_mb: 4.0, performance_budget_mb: 3.0 },
+        Framework::Svelte => FrameworkLimits { max_total_size_mb: 1.0, performance_budget_mb: 0.8 },
+        Framework::Vite => FrameworkLimits { max_total_size_mb: 2.0, performance_budget_mb: 1.5 },
+        Framework::Webpack => FrameworkLimits { max_total_size_mb: 2.5, performance_budget_mb: 2.0 },
+        Framework::Unknown => FrameworkLimits { max_total_size_mb: 2.0, performance_budget_mb: 1.5 },
     }
 }
 

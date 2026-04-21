@@ -215,8 +215,6 @@ fn determine_file_type(path: &Path) -> FileType {
         FileType::Layout
     } else if file_name == "page.tsx" || file_name == "page.js" {
         FileType::Page
-    } else if path_lower.contains("/api/") && (path_lower.ends_with("/route.ts") || path_lower.ends_with("/route.js")) {
-        FileType::ApiRoute
     } else if path_lower.contains("/api/") {
         FileType::ApiRoute
     } else if path_str.ends_with(".d.ts") || (path_lower.contains("/types/") && (path_lower.ends_with(".ts") || path_lower.ends_with(".tsx"))) {
@@ -259,10 +257,8 @@ fn determine_severity_with_config(lines: usize, config: &Config) -> Severity {
         Severity::Critical
     } else if lines >= levels.error {
         Severity::Error
-    } else if lines >= levels.warning {
-        Severity::Warning
     } else {
-        Severity::Warning // Fallback, shouldn't happen if threshold is set correctly
+        Severity::Warning
     }
 }
 

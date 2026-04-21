@@ -104,24 +104,10 @@ impl FileProgressTracker {
         }
     }
 
-    /// Increment progress by 1
-    pub fn inc(&self) {
-        if let Some(pb) = &self.progress_bar {
-            pb.inc(1);
-        }
-    }
-
     /// Set progress to a specific value
     pub fn set_position(&self, pos: u64) {
         if let Some(pb) = &self.progress_bar {
             pb.set_position(pos);
-        }
-    }
-
-    /// Update the progress message
-    pub fn set_message(&self, message: &str) {
-        if let Some(pb) = &self.progress_bar {
-            pb.set_message(message.to_string());
         }
     }
 
@@ -138,17 +124,6 @@ impl FileProgressTracker {
         }
     }
 
-    /// Finish the progress bar and clear it
-    pub fn finish_and_clear(&self) {
-        let elapsed = self.start_time.elapsed();
-        if elapsed < self.min_display_time {
-            std::thread::sleep(self.min_display_time - elapsed);
-        }
-
-        if let Some(pb) = &self.progress_bar {
-            pb.finish_and_clear();
-        }
-    }
 }
 
 impl Drop for FileProgressTracker {
@@ -159,23 +134,6 @@ impl Drop for FileProgressTracker {
             }
         }
     }
-}
-
-/// Convenience function for creating a spinner with default settings
-pub fn create_spinner(message: &str, quiet: bool) -> Option<ProgressBar> {
-    ProgressBarBuilder::new()
-        .quiet(quiet)
-        .message(message)
-        .spinner()
-}
-
-/// Convenience function for creating a progress bar with default settings
-pub fn create_progress_bar(message: &str, total: u64, quiet: bool) -> Option<ProgressBar> {
-    ProgressBarBuilder::new()
-        .quiet(quiet)
-        .message(message)
-        .length(total)
-        .progress_bar()
 }
 
 #[cfg(test)]
@@ -203,9 +161,7 @@ mod tests {
     #[test]
     fn test_file_progress_tracker() {
         let tracker = FileProgressTracker::new("Testing", Some(10), true);
-        tracker.inc();
         tracker.set_position(5);
-        tracker.set_message("Updated message");
         tracker.finish_with_message("Done");
         // Should not panic when dropped
     }

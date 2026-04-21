@@ -1,24 +1,5 @@
 /// Utility functions for standardized command output
 use colored::*;
-use serde::Serialize;
-
-/// Handle standard command output with JSON and quiet mode support
-pub fn handle_command_output<T>(
-    data: &T,
-    json: bool,
-    quiet: bool,
-    print_fn: impl Fn(&T, bool),
-) -> anyhow::Result<()>
-where
-    T: Serialize,
-{
-    if json {
-        println!("{}", serde_json::to_string_pretty(data)?);
-    } else {
-        print_fn(data, quiet);
-    }
-    Ok(())
-}
 
 /// Print a status message only if not in quiet mode
 pub fn print_status(message: &str, quiet: bool) {
@@ -38,13 +19,6 @@ pub fn print_success(message: &str, quiet: bool) {
 pub fn print_warning(message: &str, quiet: bool) {
     if !quiet {
         println!("{}", message.bold().yellow());
-    }
-}
-
-/// Print an error message with standard formatting
-pub fn print_error(message: &str, quiet: bool) {
-    if !quiet {
-        eprintln!("{}", message.bold().red());
     }
 }
 

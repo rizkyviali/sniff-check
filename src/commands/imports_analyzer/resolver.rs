@@ -113,36 +113,4 @@ impl PathAliasResolver {
         None
     }
     
-    #[allow(dead_code)]
-    fn resolve_alias(&self, import_path: &str) -> Option<PathBuf> {
-        for (pattern, targets) in &self.path_mappings {
-            if let Some(resolved) = self.try_match_pattern(pattern, import_path, targets) {
-                return Some(resolved);
-            }
-        }
-        None
-    }
-    
-    #[allow(dead_code)]
-    fn try_match_pattern(&self, pattern: &str, import_path: &str, targets: &[PathBuf]) -> Option<PathBuf> {
-        if pattern.ends_with("/*") {
-            let prefix = &pattern[..pattern.len() - 2];
-            if import_path.starts_with(prefix) {
-                let suffix = &import_path[prefix.len()..];
-                for target in targets {
-                    let resolved = target.join(suffix.trim_start_matches('/'));
-                    if import_exists(&resolved) {
-                        return Some(resolved);
-                    }
-                }
-            }
-        } else if pattern == import_path {
-            for target in targets {
-                if import_exists(target) {
-                    return Some(target.clone());
-                }
-            }
-        }
-        None
-    }
 }

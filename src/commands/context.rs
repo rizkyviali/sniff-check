@@ -399,10 +399,11 @@ async fn analyze_project_structure(project_dir: &Path) -> Result<ProjectStructur
 
 async fn analyze_directories(project_dir: &Path) -> Result<Vec<DirectoryInfo>> {
     let mut directories = Vec::new();
-    
+    let config = crate::config::Config::load().unwrap_or_default();
+
     for entry in WalkDir::new(project_dir).max_depth(3) {
         let entry = entry?;
-        if entry.file_type().is_dir() && !FileUtils::is_node_modules(entry.path()) {
+        if entry.file_type().is_dir() && !FileUtils::is_excluded_path_with_config(entry.path(), &config) {
             let path = entry.path();
             let relative_path = path.strip_prefix(project_dir)
                 .unwrap_or(path)

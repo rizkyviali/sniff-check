@@ -8,7 +8,11 @@ mod context_tests {
     
     #[test]
     fn test_file_walking_with_extensions() {
-        let temp_dir = TempDir::new().unwrap();
+        // Use current_dir() to avoid /tmp which matches the "tmp" excluded_dirs entry
+        let temp_dir = tempfile::Builder::new()
+            .prefix("sniff_test_")
+            .tempdir_in(std::env::current_dir().unwrap())
+            .unwrap();
         let temp_path = temp_dir.path();
         
         // Create test files

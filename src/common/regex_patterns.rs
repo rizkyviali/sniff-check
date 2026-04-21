@@ -10,8 +10,6 @@ pub struct CommonPatterns {
     pub ts_ignore: Regex,
     pub ts_expect_error: Regex,
     pub import_statement: Regex,
-    pub named_import: Regex,
-    pub default_import: Regex,
     pub event_listener: Regex,
     pub timer_function: Regex,
     pub array_push: Regex,
@@ -29,8 +27,6 @@ impl CommonPatterns {
             ts_ignore: Regex::new(r"@ts-ignore")?,
             ts_expect_error: Regex::new(r"@ts-expect-error")?,
             import_statement: Regex::new(r#"^import\s+(.+?)\s+from\s+['"](.+?)['"];?\s*(?://.*)?$"#)?,
-            named_import: Regex::new(r"import\s*\{\s*([^}]+)\s*\}")?,
-            default_import: Regex::new(r"import\s+(\w+)\s+from")?,
             event_listener: Regex::new(r"addEventListener\([^)]+\)")?,
             timer_function: Regex::new(r"set(?:Interval|Timeout)\([^)]+\)")?,
             array_push: Regex::new(r"\w+\.push\([^)]+\)")?,
@@ -45,29 +41,6 @@ pub fn get_common_patterns() -> &'static CommonPatterns {
     COMMON_PATTERNS.get_or_init(|| {
         CommonPatterns::new().expect("Failed to compile common regex patterns")
     })
-}
-
-/// Check if a string contains keywords or built-in identifiers that should be ignored
-pub fn is_keyword_or_builtin(identifier: &str) -> bool {
-    const KEYWORDS: &[&str] = &[
-        // JavaScript/TypeScript keywords
-        "const", "let", "var", "function", "class", "interface", "type", "enum",
-        "if", "else", "for", "while", "do", "switch", "case", "default",
-        "return", "break", "continue", "throw", "try", "catch", "finally",
-        "import", "export", "from", "as", "async", "await", "yield",
-        "true", "false", "null", "undefined", "this", "super",
-        
-        // Common globals
-        "console", "window", "document", "process", "require", "module",
-        
-        // React/common hooks
-        "React", "Component", "useState", "useEffect", "useContext",
-        
-        // TypeScript types
-        "string", "number", "boolean", "object", "any", "void", "never",
-    ];
-    
-    KEYWORDS.contains(&identifier) || identifier.len() <= 2
 }
 
 /// Check if a line appears to be within a string literal or comment
@@ -97,13 +70,6 @@ mod tests {
         let patterns = get_common_patterns();
         assert!(patterns.any_type.is_match("param: any"));
         assert!(patterns.import_statement.is_match("import React from 'react';"));
-    }
-
-    #[test]
-    fn test_keyword_detection() {
-        assert!(is_keyword_or_builtin("const"));
-        assert!(is_keyword_or_builtin("React"));
-        assert!(!is_keyword_or_builtin("MyComponent"));
     }
 
     #[test]
