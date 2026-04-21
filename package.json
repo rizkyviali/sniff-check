@@ -1,6 +1,6 @@
 {
   "name": "sniff-check",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "🎯 Opinionated TypeScript/Next.js Development Toolkit - Find large files, unused imports, broken imports, and enforce code quality standards with lightning speed",
   "bin": {
     "sniff": "./bin/sniff"
