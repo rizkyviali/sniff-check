@@ -6,7 +6,7 @@
     "sniff": "./bin/sniff"
   },
   "scripts": {
-    "preinstall": "node -e \"const g=process.env.npm_config_global;const sd=process.env.npm_config_save_dev;const so=process.env.npm_config_save_optional;const prod=process.env.NODE_ENV==='production';if(!g&&!sd&&!so||prod){console.error('❌ sniff-check should be installed globally (npm install -g sniff-check) or as a devDependency (npm install --save-dev sniff-check)');process.exit(1)}\"",
+    "preinstall": "node preinstall.js",
     "postinstall": "node install.js",
     "test": "cargo test"
   },
@@ -61,6 +61,7 @@
   "files": [
     "bin/",
     "install.js",
+    "preinstall.js",
     "README.md",
     "src/",
     "Cargo.toml",
