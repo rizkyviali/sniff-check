@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-04-23
+
+### 🐛 Bug Fixes
+
+#### 🔧 Installation & Package
+
+- **`preinstall.js`** — Replaced broken inline `preinstall` script with a dedicated `preinstall.js` file. The original `||prod` condition caused Vercel (and any environment with `NODE_ENV=production`) to unconditionally fail `npm install`, even when `sniff-check` was properly listed as a `devDependency`. The new script skips the check entirely in production/CI/deployment environments (`NODE_ENV=production`, `VERCEL`, `CI`, `NETLIFY`, `GITHUB_ACTIONS`) and falls back to reading the parent `package.json` to detect devDependency placement when npm config flags are not set.
+
+---
+
 ## [0.2.5] - 2026-04-22
 
 ### 🧹 Refactor
