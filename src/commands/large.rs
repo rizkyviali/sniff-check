@@ -83,22 +83,22 @@ pub struct Summary {
 
 pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
     let start_time = std::time::Instant::now();
-    init_command("large file", quiet);
-    
+    let suppress = quiet || json;
+    init_command("large file", suppress);
+
     // Load config for configurable thresholds
     let config = Config::load().unwrap_or_default();
-    
+
     // Use config's threshold if CLI uses the default value (100)
     let effective_threshold = if threshold == 100 {
         config.large_files.threshold
     } else {
-        threshold  // Use explicit CLI value
+        threshold
     };
-    
-    let report = scan_large_files_with_config(effective_threshold, &config, quiet)?;
+
+    let report = scan_large_files_with_config(effective_threshold, &config, suppress)?;
     let duration_ms = start_time.elapsed().as_millis() as u64;
-    
-    // Create standardized JSON response
+
     let response = create_standard_json_output(
         "large",
         &report,
@@ -106,11 +106,10 @@ pub async fn run(threshold: usize, json: bool, quiet: bool) -> Result<()> {
         report.summary.large_files_found,
         Some(duration_ms),
     );
-    
+
     output_result(&response, json, quiet, |report, quiet| print_report(report, &config, quiet))?;
-    
-    // Complete command and use common error handling
-    complete_command("large file", report.summary.large_files_found == 0, quiet);
+
+    complete_command("large file", report.summary.large_files_found == 0, suppress);
     check_failure_threshold(report.summary.large_files_found > 0, ExitCode::ThresholdExceeded);
     
     Ok(())
