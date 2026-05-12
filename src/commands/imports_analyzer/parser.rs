@@ -2,7 +2,87 @@ use anyhow::Result;
 use std::collections::HashSet;
 
 use super::types::{ImportType, ParsedImport};
-use crate::common::get_common_patterns;
+
+/// A single import statement, potentially collapsed from multiple raw lines.
+pub struct MultilineImportEntry {
+    /// 1-indexed line number where the import starts in the original file.
+    pub line_num: usize,
+    /// The import statement collapsed to a single line.
+    pub collapsed: String,
+    /// 0-indexed raw line indices that belong to this import (for exclusion from usage scan).
+    pub line_indices: Vec<usize>,
+}
+
+/// Collapse multi-line imports into single logical entries.
+/// Handles patterns like:
+///   import {
+///     foo,
+///     bar,
+///   } from './module';
+pub fn preprocess_multiline_imports(lines: &[&str]) -> Vec<MultilineImportEntry> {
+    let mut result = Vec::new();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+
+        if !trimmed.starts_with("import ") && trimmed != "import" {
+            i += 1;
+            continue;
+        }
+
+        let start_line = i + 1; // 1-indexed
+
+        if is_complete_import(trimmed) {
+            result.push(MultilineImportEntry {
+                line_num: start_line,
+                collapsed: trimmed.to_string(),
+                line_indices: vec![i],
+            });
+            i += 1;
+            continue;
+        }
+
+        // Multi-line: accumulate until we find the closing from '...'
+        let mut parts = vec![trimmed.to_string()];
+        let mut indices = vec![i];
+        i += 1;
+
+        while i < lines.len() {
+            let next = lines[i].trim();
+            indices.push(i);
+            parts.push(next.to_string());
+            if is_complete_import(&parts.join(" ")) {
+                i += 1;
+                break;
+            }
+            // Safety bail-out: imports won't realistically span >30 lines
+            if parts.len() > 30 {
+                i += 1;
+                break;
+            }
+            i += 1;
+        }
+
+        result.push(MultilineImportEntry {
+            line_num: start_line,
+            collapsed: parts.join(" "),
+            line_indices: indices,
+        });
+    }
+
+    result
+}
+
+fn is_complete_import(line: &str) -> bool {
+    let after_import = line.trim_start_matches("import").trim_start();
+    // Side-effect import: import './foo'
+    if after_import.starts_with('\'') || after_import.starts_with('"') {
+        return true;
+    }
+    // Standard import with from clause
+    line.contains(" from '") || line.contains(" from \"")
+}
 
 fn is_keyword_or_builtin(identifier: &str) -> bool {
     matches!(identifier,
@@ -169,11 +249,9 @@ fn is_typescript_builtin_type(identifier: &str) -> bool {
     )
 }
 
-pub fn collect_used_identifiers(lines: &[&str]) -> Result<HashSet<String>> {
+pub fn collect_used_identifiers(lines: &[&str], skip_indices: &HashSet<usize>) -> Result<HashSet<String>> {
     let mut used_identifiers = HashSet::new();
-    
-    let patterns = get_common_patterns();
-    
+
     // Comprehensive usage detection patterns
     let general_usage = regex::Regex::new(r"\b([A-Z][a-zA-Z0-9_]*|[a-z][a-zA-Z0-9_]*)\b")?;
     let react_hook_usage = regex::Regex::new(r"const\s*\[([^,\]]+),\s*([^\]]+)\]\s*=\s*(use[A-Z]\w*)")?;
@@ -182,14 +260,21 @@ pub fn collect_used_identifiers(lines: &[&str]) -> Result<HashSet<String>> {
     let jsx_usage = regex::Regex::new(r"</?([A-Z][a-zA-Z0-9_.]*)")?;
     let interface_extends = regex::Regex::new(r"(?:extends|implements)\s+([A-Z][a-zA-Z0-9_<>,\s]*)")?;
     let function_param_type = regex::Regex::new(r"\(\s*[^:)]*:\s*([A-Z][a-zA-Z0-9_<>,\s\[\]]*)")?;
-    
-    for (_line_num, line) in lines.iter().enumerate() {
-        // Skip import lines
-        if patterns.import_statement.is_match(line.trim()) {
+
+    for (line_idx, line) in lines.iter().enumerate() {
+        // Skip lines that are part of import statements
+        if skip_indices.contains(&line_idx) {
             continue;
         }
-        
-        let line_content = line.trim();
+
+        let trimmed = line.trim();
+
+        // Skip pure comment lines — identifiers in comments are not real usages
+        if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
+            continue;
+        }
+
+        let line_content = trimmed;
         
         // 1. General identifier usage
         for cap in general_usage.find_iter(line_content) {

@@ -18,11 +18,11 @@ use crate::common::{
 use types::{ImportsReport, ImportsSummary, UnusedImport, FileAnalysis};
 use resolver::PathAliasResolver;
 use validation::check_import_validity;
-use parser::{parse_import_statement, find_unused_items, collect_used_identifiers};
+use parser::{parse_import_statement, find_unused_items, collect_used_identifiers, preprocess_multiline_imports};
 use reporter::{print_report, calculate_savings};
 
 pub async fn run(json: bool, quiet: bool) -> Result<()> {
-    if !quiet {
+    if !quiet && !json {
         println!("{}", "🔍 Scanning for unused and broken imports...".bold().blue());
     }
     
@@ -107,34 +107,36 @@ fn analyze_imports(quiet: bool) -> Result<ImportsReport> {
 }
 
 fn analyze_file_imports(
-    path: &Path, 
-    project_root: &Path, 
+    path: &Path,
+    project_root: &Path,
     path_resolver: &Option<PathAliasResolver>
 ) -> Result<FileAnalysis> {
     let content = fs::read_to_string(path)?;
     let lines: Vec<&str> = content.lines().collect();
-    
-    let mut imports = Vec::new();
-    
-    // Extract import statements
+
     let patterns = get_common_patterns();
-    
-    // First pass: collect imports
-    for (line_num, line) in lines.iter().enumerate() {
-        if let Some(captures) = patterns.import_statement.captures(line.trim()) {
+
+    // First pass: collapse multi-line imports and collect them
+    let import_entries = preprocess_multiline_imports(&lines);
+
+    // Build exclusion set so usage scanning doesn't treat import lines as real usage
+    let import_line_indices: std::collections::HashSet<usize> = import_entries.iter()
+        .flat_map(|e| e.line_indices.iter().copied())
+        .collect();
+
+    let mut imports = Vec::new();
+    for entry in &import_entries {
+        if let Some(captures) = patterns.import_statement.captures(entry.collapsed.trim()) {
             let (Some(spec_match), Some(path_match)) = (captures.get(1), captures.get(2)) else {
                 continue;
             };
-            let import_spec = spec_match.as_str();
-            let import_path = path_match.as_str();
-            
-            let parsed_import = parse_import_statement(import_spec, import_path);
-            imports.push((line_num + 1, line.trim().to_string(), parsed_import, import_path.to_string()));
+            let parsed_import = parse_import_statement(spec_match.as_str(), path_match.as_str());
+            imports.push((entry.line_num, entry.collapsed.clone(), parsed_import, path_match.as_str().to_string()));
         }
     }
-    
-    // Second pass: collect used identifiers
-    let used_identifiers = collect_used_identifiers(&lines)?;
+
+    // Second pass: collect used identifiers, skipping import lines and comment lines
+    let used_identifiers = collect_used_identifiers(&lines, &import_line_indices)?;
     
     // Check which imports are unused and broken
     let mut unused_imports = Vec::new();
