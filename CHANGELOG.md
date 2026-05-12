@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-05-12
+
+### 🐛 Bug Fixes
+
+#### `sniff imports` — accuracy improvements
+
+- **Multi-line imports were completely invisible.** The import parser only matched `import ... from '...'` on a single line. Any multi-line import block was silently skipped: the identifiers were never added to the import list, so unused detection and broken-path detection did not run on them. A new pre-processing pass now collapses multi-line imports into single logical entries before analysis.
+
+- **Import continuation lines counted as identifier usages.** Because multi-line imports were not recognised, lines like `  Button,` or `} from './module'` were passed to the usage-scanner as regular code. Any identifier on those lines was treated as "used", which would have hidden real unused imports once multi-line detection was added. The fix tracks which raw lines belong to import statements and excludes them from the usage scan.
+
+- **Comment-only lines counted as identifier usages.** The usage scanner read all non-import lines, including `// TODO: remove Button`. An identifier mentioned only in a comment was considered "used", hiding unused imports. Pure comment lines (`//`, `*`, `/*`) are now excluded from usage scanning.
+
+> **Note on the cycle:** Import detection accuracy has been patched in 0.1.8, 0.1.9, and 0.2.3. Each release fixed the most visible symptom but left underlying gaps. The root limitation is that reliable usage detection requires a TypeScript AST; the regex-based approach will always be an approximation. These fixes raise accuracy meaningfully but do not eliminate that constraint.
+
+#### `sniff types` — reduced noise
+
+- **`any` in comments was flagged.** The pattern `\b:\s*any\b` matched lines like `// handle: any case`. Code-level checks now skip pure comment lines; `@ts-ignore`/`@ts-expect-error` checks are unaffected since those are always inside comments.
+
+- **`MissingReturnType` detection removed.** The heuristic checked `!line.contains("):")` to infer a missing return type. This produced false positives on arrow functions, inline callbacks, and multi-line signatures. Without a real AST parser the check cannot be made reliable. It has been removed rather than left as persistent noise.
+
+- **Fake "Type Coverage Score" replaced.** The previous score was `(files × 10 − issues) / (files × 10) × 100` — the `× 10` was an arbitrary constant with no semantic meaning. Replaced with **any-free files %**: the percentage of TypeScript files that contain zero `any` usages. This is directly measurable from the data already collected.
+
+#### JSON output — two silent data-loss bugs
+
+- **Stdout not flushed before `process::exit`.** `check_failure_threshold` called `std::process::exit()` immediately after `println!()` for JSON output. Rust's stdout is buffered; when the process was killed before the buffer flushed, JSON output was silently lost. `stdout` is now flushed explicitly before exit.
+
+- **Progress headers written to stdout in `--json` mode.** Lines like `🔍 Scanning for unused and broken imports...` were printed to stdout regardless of the `--json` flag, making the output unparseable as JSON. All scanning headers now check `!json` before printing.
+
+### 🔧 Internal
+
+- **Integration test race condition fixed.** Tests called `std::env::set_current_dir()` (a process-global) while the test harness ran them in parallel, causing tests to operate in each other's temp directories. All tests now pass the project path directly via `run_sniff_command_in_dir` instead of mutating the global CWD.
+
+- **Version files re-synchronised.** `Cargo.toml` was at 0.2.5, `main.rs` clap version at 0.2.4, `package.json` at 0.2.6. All are now 0.2.7.
+
+---
+
 ## [0.2.6] - 2026-04-23
 
 ### 🐛 Bug Fixes
