@@ -6,7 +6,6 @@ use std::sync::OnceLock;
 /// Container for commonly used regex patterns
 pub struct CommonPatterns {
     pub any_type: Regex,
-    pub function_def: Regex,
     pub ts_ignore: Regex,
     pub ts_expect_error: Regex,
     pub import_statement: Regex,
@@ -23,7 +22,6 @@ impl CommonPatterns {
     fn new() -> Result<Self, regex::Error> {
         Ok(Self {
             any_type: Regex::new(r"\b:\s*any\b")?,
-            function_def: Regex::new(r"(?:function\s+\w+|const\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>|(?:async\s+)?function\s*\([^)]*\))\s*\{")?,
             ts_ignore: Regex::new(r"@ts-ignore")?,
             ts_expect_error: Regex::new(r"@ts-expect-error")?,
             import_statement: Regex::new(r#"^import\s+(.+?)\s+from\s+['"](.+?)['"];?\s*(?://.*)?$"#)?,

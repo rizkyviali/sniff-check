@@ -45,7 +45,7 @@ pub struct TypeSummary {
 }
 
 pub async fn run(json: bool, quiet: bool) -> Result<()> {
-    if !quiet {
+    if !quiet && !json {
         println!("{}", "🔍 Checking TypeScript type coverage...".bold().blue());
     }
     
@@ -71,22 +71,13 @@ fn analyze_typescript_files(quiet: bool) -> Result<TypeScriptReport> {
     let files = scanner.find_files_with_extensions(&current_dir, &["ts", "tsx"]);
     let files_count = files.len();
     
-    if !quiet {
-        println!("🔍 Found {} TypeScript files to analyze...", files_count);
-        println!("📊 Analyzing TypeScript files for type quality...");
-    }
-    
     let all_issues: Vec<Vec<TypeIssue>> = FileUtils::process_files_parallel(
         &files,
         |path| analyze_file_optimized(path),
         "Analyzing TypeScript files",
         quiet
     )?;
-    
-    if !quiet {
-        println!("✅ TypeScript analysis completed");
-    }
-    
+
     let issues: Vec<TypeIssue> = all_issues.into_iter().flatten().collect();
     let summary = create_summary(files_count, &issues);
     
@@ -102,20 +93,12 @@ fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
     
     for (line_num, line) in content.lines().enumerate() {
         let line_num = line_num + 1;
-        
-        // Check for 'any' usage
-        for mat in patterns.any_type.find_iter(line) {
-            issues.push(TypeIssue {
-                file: file_path.clone(),
-                line: line_num,
-                column: mat.start(),
-                issue_type: IssueType::AnyUsage,
-                message: "Usage of 'any' type detected".to_string(),
-                suggestion: Some("Consider using a more specific type".to_string()),
-            });
-        }
-        
-        // Check for @ts-ignore
+        let trimmed = line.trim();
+        let is_comment = trimmed.starts_with("//")
+            || trimmed.starts_with('*')
+            || trimmed.starts_with("/*");
+
+        // @ts-ignore and @ts-expect-error are always inside comments — check unconditionally
         if patterns.ts_ignore.is_match(line) {
             issues.push(TypeIssue {
                 file: file_path.clone(),
@@ -123,11 +106,9 @@ fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
                 column: 0,
                 issue_type: IssueType::TSIgnore,
                 message: "@ts-ignore comment found".to_string(),
-                suggestion: Some("Consider fixing the underlying type issue instead".to_string()),
+                suggestion: Some("Fix the underlying type error instead of suppressing it".to_string()),
             });
         }
-        
-        // Check for @ts-expect-error
         if patterns.ts_expect_error.is_match(line) {
             issues.push(TypeIssue {
                 file: file_path.clone(),
@@ -135,22 +116,25 @@ fn analyze_file_optimized(path: &Path) -> Result<Vec<TypeIssue>> {
                 column: 0,
                 issue_type: IssueType::TSExpectError,
                 message: "@ts-expect-error comment found".to_string(),
-                suggestion: Some("Verify if this error suppression is still needed".to_string()),
+                suggestion: Some("Verify this suppression is still necessary".to_string()),
             });
         }
-        
-        // Check for functions without return types (simplified check)
-        if patterns.function_def.is_match(line) && !line.contains("):") && !line.trim_end().ends_with("=> {") {
-            if !line.contains("constructor") && !line.contains("() {") {
-                issues.push(TypeIssue {
-                    file: file_path.clone(),
-                    line: line_num,
-                    column: 0,
-                    issue_type: IssueType::MissingReturnType,
-                    message: "Function missing explicit return type".to_string(),
-                    suggestion: Some("Add explicit return type annotation".to_string()),
-                });
-            }
+
+        // Skip comment lines for code-level checks
+        if is_comment {
+            continue;
+        }
+
+        // Check for 'any' usage in actual code
+        for mat in patterns.any_type.find_iter(line) {
+            issues.push(TypeIssue {
+                file: file_path.clone(),
+                line: line_num,
+                column: mat.start(),
+                issue_type: IssueType::AnyUsage,
+                message: "Usage of 'any' type detected".to_string(),
+                suggestion: Some("Replace with a specific type or 'unknown'".to_string()),
+            });
         }
     }
     
@@ -162,7 +146,7 @@ fn create_summary(files_scanned: usize, issues: &[TypeIssue]) -> TypeSummary {
     let mut missing_return_types = 0;
     let mut untyped_parameters = 0;
     let mut ts_ignore_count = 0;
-    
+
     for issue in issues {
         match issue.issue_type {
             IssueType::AnyUsage => any_usage_count += 1,
@@ -172,15 +156,18 @@ fn create_summary(files_scanned: usize, issues: &[TypeIssue]) -> TypeSummary {
             _ => {}
         }
     }
-    
-    // Calculate type coverage score (simplified)
-    let total_potential_issues = files_scanned * 10; // Rough estimate
-    let type_coverage_score = if total_potential_issues > 0 {
-        ((total_potential_issues - issues.len()) as f64 / total_potential_issues as f64) * 100.0
+
+    // Percentage of files with zero 'any' usage — an honest, directly measurable metric
+    let files_with_any: std::collections::HashSet<&str> = issues.iter()
+        .filter(|i| matches!(i.issue_type, IssueType::AnyUsage))
+        .map(|i| i.file.as_str())
+        .collect();
+    let any_free_score = if files_scanned > 0 {
+        ((files_scanned - files_with_any.len()) as f64 / files_scanned as f64) * 100.0
     } else {
         100.0
     };
-    
+
     TypeSummary {
         files_scanned,
         total_issues: issues.len(),
@@ -188,7 +175,7 @@ fn create_summary(files_scanned: usize, issues: &[TypeIssue]) -> TypeSummary {
         missing_return_types,
         untyped_parameters,
         ts_ignore_count,
-        type_coverage_score: type_coverage_score.max(0.0).min(100.0),
+        type_coverage_score: any_free_score,
     }
 }
 
@@ -302,7 +289,7 @@ fn print_summary(summary: &TypeSummary) {
         coverage_str.red()
     };
     
-    println!("  Type Coverage Score: {}", coverage_colored);
+    println!("  any-free files: {}", coverage_colored);
     println!();
     
     if summary.any_usage_count > 0 {
